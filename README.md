@@ -15,6 +15,13 @@ Concya is a complete voice-based AI reservation assistant that combines:
 
 All services run in a **single Docker container** for simplified deployment and reduced costs.
 
+## Client Options
+
+Concya supports two client interfaces:
+
+1. **Terminal Client** (Recommended) - Python-based CLI for local testing and development
+2. **Web Interface** (Legacy) - Browser-based UI (archived in `archive/index.html`)
+
 ## Architecture
 
 ```
@@ -46,40 +53,70 @@ All services run in a **single Docker container** for simplified deployment and 
 
 ## Quick Start
 
-### 1. Deploy to RunPod
+### Option A: Terminal Client (Recommended)
 
+**1. Start the Server**
 ```bash
-# Build and push Docker image
-./build-and-push.sh
+# Local development
+python app.py
 
-# Create a new pod on RunPod with:
-# - Image: olaoluwasubomi/concya:latest
-# - GPU: L40S (or similar NVIDIA GPU)
-# - Memory: 16GB minimum
-# - Port: 8000/http
-# - Environment: OPENAI_API_KEY=sk-...
+# Or deploy to RunPod (see deployment section below)
 ```
 
-### 2. Access the Service
+**2. Install Terminal Client**
+```bash
+cd stt
+pip install -r requirements.txt
+```
 
-Visit your RunPod pod URL (e.g., `https://your-pod-id.proxy.runpod.net/`)
+**3. Run the Client**
+```bash
+python client.py --server http://localhost:8000
+```
 
-The web interface will automatically connect to all services on the same server.
+**4. Start Talking!**
+- Speak naturally into your microphone
+- Watch real-time transcription
+- Get AI responses with voice playback
+- Full conversational experience in your terminal
 
-### 3. Test the Full Pipeline
+See [stt/README.md](stt/README.md) for detailed client documentation.
 
-1. Click the red record button
-2. Speak: *"I need a reservation for 4 people tomorrow at 7 PM"*
-3. Watch the magic:
-   - STT transcribes your voice in real-time
-   - LLM generates a conversational response
-   - TTS speaks the response back to you
+### Option B: Deploy to RunPod
+
+**1. Build and Push Docker Image**
+```bash
+./build-and-push.sh
+```
+
+**2. Create RunPod Pod**
+- Image: `olaoluwasubomi/concya:latest`
+- GPU: L40S (or similar NVIDIA GPU)
+- Memory: 16GB minimum
+- Port: 8000/http
+- Environment: `OPENAI_API_KEY=sk-...`
+
+**3. Connect Terminal Client**
+```bash
+cd stt
+python client.py --server https://your-pod-id.proxy.runpod.net
+```
+
+### Example Conversation
+
+```
+[LISTENING] 🎤 Microphone active - speak now!
+👤 You: Hi, I'd like to make a reservation for 4 people tomorrow at 7pm
+[THINKING] 🤔 Processing with AI...
+🤖 Concya: Perfect! I've reserved a table for 4 tomorrow at 7:00 PM. May I have your name?
+[SPEAKING] 🔊 Playing response...
+```
 
 ## API Endpoints
 
 ### General
 
-- `GET /` - Web UI
+- `GET /` - Web UI (legacy, see `archive/index.html`)
 - `GET /health` - Health check
 - `GET /metrics` - Prometheus metrics
 
