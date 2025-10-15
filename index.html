@@ -710,7 +710,7 @@ const isWebContext = !isExtension;
 let isRecording = false;
 let websocket = null;
 let recorder = null;
-let chunkDuration = 100;
+let chunkDuration = 200; // Increased from 100ms to reduce audio cutoff issues
 let websocketUrl = "wss://mhw9nyyz6u8l3h-8000.proxy.runpod.net/asr";
 let userClosing = false;
 let wakeLock = null;
@@ -928,13 +928,23 @@ websocketInput.addEventListener("change", () => {
 // LLM Integration Functions
 async function sendToLLM(text, language) {
   if (!text.trim()) return;
-  
+
   console.log(`🗣️  [STT→LLM] Sending to LLM: "${text}" | Language: ${language} | Session: ${sessionId}`);
   console.log(`📡 [LLM] Service URL: ${llmServiceUrl}`);
-  
+
+  // Prevent multiple simultaneous LLM calls
+  if (isProcessingLLM) {
+    console.log(`⚠️  [LLM] Skipping - already processing`);
+    return;
+  }
+
   isProcessingLLM = true;
   
   try {
+    // Add timeout to prevent hanging LLM calls
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
     const response = await fetch(`${llmServiceUrl}/conversation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -942,8 +952,11 @@ async function sendToLLM(text, language) {
         text: text,
         session_id: sessionId,
         language: language
-      })
+      }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
     
     console.log(`✅ [LLM] Response status: ${response.status}`);
     
@@ -963,8 +976,14 @@ async function sendToLLM(text, language) {
       await playTTS(data.reply);
     }
   } catch (err) {
-    console.error('❌ [LLM] Error:', err);
-    console.error('❌ [LLM] Stack trace:', err.stack);
+    if (err.name === 'AbortError') {
+      console.error('⏰ [LLM] Request timed out after 30 seconds');
+      statusText.textContent = "LLM request timed out. Try speaking again.";
+    } else {
+      console.error('❌ [LLM] Error:', err);
+      console.error('❌ [LLM] Stack trace:', err.stack);
+      statusText.textContent = "LLM service error. Check console for details.";
+    }
   } finally {
     isProcessingLLM = false;
   }
@@ -1020,7 +1039,9 @@ function setupWebSocket() {
       resolve();
     };
 
-    websocket.onclose = () => {
+    websocket.onclose = (event) => {
+      console.log(`🔌 [WS] Connection closed. Code: ${event.code}, Reason: ${event.reason}`);
+
       if (userClosing) {
         if (waitingForStop) {
           statusText.textContent = "Processing finalized or connection closed.";
@@ -1112,7 +1133,9 @@ function setupWebSocket() {
       // Auto-send completed sentences to LLM
       if (lines && lines.length > 0) {
         const lastLine = lines[lines.length - 1];
-        if (lastLine.text && !isProcessingLLM && lastLine.speaker > 0) {
+        if (lastLine.text && !isProcessingLLM && lastLine.text.trim().length > 3) {
+          // Send to LLM if we have meaningful text (at least 4 characters)
+          // Removed speaker > 0 condition that was blocking first utterances
           sendToLLM(lastLine.text, lastLine.detected_language || 'en');
         }
       }
