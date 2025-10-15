@@ -897,9 +897,15 @@ if (websocketDefaultSpan) websocketDefaultSpan.textContent = defaultWebSocketUrl
 websocketInput.value = defaultWebSocketUrl;
 websocketUrl = defaultWebSocketUrl;
 
+// Initialize conversation status
+updateConversationStatus();
+
 // Session management for LLM conversations
 let sessionId = generateSessionId();
 let isProcessingLLM = false;
+let lastLLMCallTime = 0;
+let speechDebounceTimer = null;
+let conversationState = 'idle'; // idle, listening, thinking, speaking
 
 // LLM Service URL (same server - unified service)
 let llmServiceUrl = window.location.origin;
@@ -929,16 +935,33 @@ websocketInput.addEventListener("change", () => {
 async function sendToLLM(text, language) {
   if (!text.trim()) return;
 
-  console.log(`🗣️  [STT→LLM] Sending to LLM: "${text}" | Language: ${language} | Session: ${sessionId}`);
-  console.log(`📡 [LLM] Service URL: ${llmServiceUrl}`);
+  const now = Date.now();
 
-  // Prevent multiple simultaneous LLM calls
-  if (isProcessingLLM) {
-    console.log(`⚠️  [LLM] Skipping - already processing`);
+  // Debounce: Don't send if we just sent something recently (within 2 seconds)
+  if (now - lastLLMCallTime < 2000) {
+    console.log(`⏳ [LLM] Debouncing - too soon since last call`);
     return;
   }
 
+  // Prevent multiple simultaneous LLM calls
+  if (isProcessingLLM || conversationState === 'thinking' || conversationState === 'speaking') {
+    console.log(`⚠️  [LLM] Skipping - busy (${conversationState})`);
+    return;
+  }
+
+  console.log(`🗣️  [STT→LLM] Sending to LLM: "${text}" | Language: ${language} | Session: ${sessionId}`);
+  console.log(`📡 [LLM] Service URL: ${llmServiceUrl}`);
+
+  // Clear any pending debounce timer
+  if (speechDebounceTimer) {
+    clearTimeout(speechDebounceTimer);
+    speechDebounceTimer = null;
+  }
+
+  lastLLMCallTime = now;
   isProcessingLLM = true;
+  conversationState = 'thinking';
+  updateConversationStatus();
   
   try {
     // Add timeout to prevent hanging LLM calls
@@ -973,20 +996,74 @@ async function sendToLLM(text, language) {
     // Play TTS response
     if (data.reply) {
       console.log(`🔊 [TTS] Requesting audio synthesis...`);
+      conversationState = 'speaking';
+      updateConversationStatus();
       await playTTS(data.reply);
     }
   } catch (err) {
     if (err.name === 'AbortError') {
       console.error('⏰ [LLM] Request timed out after 30 seconds');
       statusText.textContent = "LLM request timed out. Try speaking again.";
+      conversationState = 'idle';
     } else {
       console.error('❌ [LLM] Error:', err);
       console.error('❌ [LLM] Stack trace:', err.stack);
       statusText.textContent = "LLM service error. Check console for details.";
+      conversationState = 'idle';
     }
+    updateConversationStatus();
   } finally {
     isProcessingLLM = false;
   }
+}
+
+function updateConversationStatus() {
+  const statusIndicator = document.getElementById('conversationStatus') || createStatusIndicator();
+
+  let statusText = '';
+  let statusColor = '';
+
+  switch(conversationState) {
+    case 'idle':
+      statusText = '🎤 Ready to listen';
+      statusColor = '#666';
+      break;
+    case 'listening':
+      statusText = '👂 Listening...';
+      statusColor = '#28a745';
+      break;
+    case 'thinking':
+      statusText = '🤔 Thinking...';
+      statusColor = '#ffc107';
+      break;
+    case 'speaking':
+      statusText = '🔊 Speaking...';
+      statusColor = '#007bff';
+      break;
+  }
+
+  statusIndicator.textContent = statusText;
+  statusIndicator.style.color = statusColor;
+}
+
+function createStatusIndicator() {
+  const indicator = document.createElement('div');
+  indicator.id = 'conversationStatus';
+  indicator.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  `;
+  document.body.appendChild(indicator);
+  return indicator;
 }
 
 function displayAIResponse(reply) {
@@ -1001,26 +1078,45 @@ function displayAIResponse(reply) {
 async function playTTS(text) {
   try {
     console.log(`🔊 [TTS] Fetching: ${llmServiceUrl}/speak`);
-    
+
     const response = await fetch(`${llmServiceUrl}/speak`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text, voice: 'alloy' })
     });
-    
+
     console.log(`✅ [TTS] Response status: ${response.status}`);
-    
+
+    if (!response.ok) {
+      throw new Error(`TTS failed: ${response.status}`);
+    }
+
     const audioBlob = await response.blob();
     console.log(`🎵 [TTS] Audio blob size: ${audioBlob.size} bytes`);
-    
+
+    if (audioBlob.size === 0) {
+      throw new Error('Empty audio response');
+    }
+
     const audioUrl = URL.createObjectURL(audioBlob);
     const audio = new Audio(audioUrl);
-    
+
+    // Handle audio end
+    audio.onended = () => {
+      console.log(`✅ [TTS] Audio playback finished`);
+      conversationState = 'idle';
+      updateConversationStatus();
+      URL.revokeObjectURL(audioUrl); // Clean up
+    };
+
     console.log(`▶️  [TTS] Playing audio...`);
     await audio.play();
     console.log(`✅ [TTS] Audio playback started`);
+
   } catch (err) {
     console.warn('❌ [TTS] Playback failed:', err);
+    conversationState = 'idle';
+    updateConversationStatus();
   }
 }
 
@@ -1130,13 +1226,29 @@ function setupWebSocket() {
         status
       );
 
-      // Auto-send completed sentences to LLM
+      // Auto-send completed sentences to LLM with debouncing
       if (lines && lines.length > 0) {
         const lastLine = lines[lines.length - 1];
-        if (lastLine.text && !isProcessingLLM && lastLine.text.trim().length > 3) {
-          // Send to LLM if we have meaningful text (at least 4 characters)
-          // Removed speaker > 0 condition that was blocking first utterances
-          sendToLLM(lastLine.text, lastLine.detected_language || 'en');
+        if (lastLine.text && lastLine.text.trim().length > 3) {
+          // Clear any existing debounce timer
+          if (speechDebounceTimer) {
+            clearTimeout(speechDebounceTimer);
+          }
+
+          // Set conversation state to listening
+          if (conversationState === 'idle') {
+            conversationState = 'listening';
+            updateConversationStatus();
+          }
+
+          // Debounce: Wait 1.5 seconds after last speech before sending to LLM
+          // This allows for natural pauses in conversation
+          speechDebounceTimer = setTimeout(() => {
+            if (conversationState === 'listening') {
+              sendToLLM(lastLine.text, lastLine.detected_language || 'en');
+            }
+            speechDebounceTimer = null;
+          }, 1500);
         }
       }
     };
@@ -1536,6 +1648,18 @@ async function stopRecording() {
     } catch (e) {
     }
     recorder = null;
+  }
+
+  // Reset conversation state when recording stops
+  if (conversationState === 'listening') {
+    conversationState = 'idle';
+    updateConversationStatus();
+  }
+
+  // Clear any pending speech debounce timer
+  if (speechDebounceTimer) {
+    clearTimeout(speechDebounceTimer);
+    speechDebounceTimer = null;
   }
 
   if (recorderWorker) {
