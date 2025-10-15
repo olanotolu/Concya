@@ -112,3 +112,29 @@ reservations_active = Gauge(
     'Number of active reservations'
 )
 
+# ═══════════════════════════════════════════════════════════════
+# TWILIO METRICS
+# ═══════════════════════════════════════════════════════════════
+
+twilio_calls_total = Counter(
+    'twilio_calls_total',
+    'Total Twilio voice calls received'
+)
+
+twilio_calls_active = Gauge(
+    'twilio_calls_active',
+    'Number of active Twilio calls'
+)
+
+twilio_call_duration_seconds = Histogram(
+    'twilio_call_duration_seconds',
+    'Duration of Twilio calls in seconds',
+    buckets=[5, 15, 30, 60, 120, 300, 600]
+)
+
+twilio_audio_latency_ms = Histogram(
+    'twilio_audio_latency_ms',
+    'Twilio audio round-trip latency (STT + LLM + TTS) in milliseconds',
+    buckets=[500, 1000, 1500, 2000, 3000, 5000, 10000]
+)
+

@@ -752,6 +752,19 @@ def is_reservation_complete(data: Optional[dict]) -> bool:
     return all(key in data and data[key] for key in required)
 
 # ═══════════════════════════════════════════════════════════════
+# TWILIO VOICE INTEGRATION
+# ═══════════════════════════════════════════════════════════════
+
+try:
+    from twilio_integration import router as twilio_router
+    app.include_router(twilio_router, prefix="/twilio", tags=["twilio"])
+    logger.info("✅ Twilio Voice integration loaded")
+except ImportError as e:
+    logger.warning(f"⚠️  Twilio integration not available: {e}")
+except Exception as e:
+    logger.error(f"❌ Failed to load Twilio integration: {e}")
+
+# ═══════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════
 

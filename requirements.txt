@@ -26,3 +26,9 @@ prometheus-client
 # Database
 supabase>=2.0.0
 
+# Twilio Voice Integration
+twilio>=8.0.0
+pydub>=0.25.1
+scipy>=1.10.0
+soundfile>=0.12.1
+
