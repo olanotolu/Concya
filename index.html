@@ -707,11 +707,30 @@ if (isExtension) {
 }
 const isWebContext = !isExtension;
 
+// Check if we're running from file:// protocol (which won't work)
+if (window.location.protocol === 'file:') {
+  document.body.innerHTML = `
+    <div style="padding: 50px; text-align: center; font-family: Arial, sans-serif; color: #666;">
+      <h1 style="color: #e74c3c; margin-bottom: 20px;">🚫 Cannot Run from File</h1>
+      <p style="font-size: 18px; margin-bottom: 30px;">You cannot open this HTML file directly in your browser.</p>
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h3 style="margin-top: 0; color: #333;">To use Concya, you need to:</h3>
+        <ol style="text-align: left; display: inline-block; margin: 20px 0;">
+          <li style="margin-bottom: 10px;">Start the Concya server: <code style="background: #e9ecef; padding: 2px 6px; border-radius: 3px;">python app.py</code></li>
+          <li style="margin-bottom: 10px;">Open your browser to: <code style="background: #e9ecef; padding: 2px 6px; border-radius: 3px;">http://localhost:8000</code></li>
+          <li>Or access your RunPod deployment URL</li>
+        </ol>
+      </div>
+      <p style="color: #6c757d; font-size: 14px;">This is due to browser security restrictions that prevent direct file access to network services.</p>
+    </div>
+  `;
+}
+
 let isRecording = false;
 let websocket = null;
 let recorder = null;
 let chunkDuration = 200; // Increased from 100ms to reduce audio cutoff issues
-let websocketUrl = "wss://mhw9nyyz6u8l3h-8000.proxy.runpod.net/asr";
+let websocketUrl = "";
 let userClosing = false;
 let wakeLock = null;
 let startTime = null;
@@ -890,7 +909,9 @@ if (isExtension) {
     port = window.location.port;
     protocol = window.location.protocol === "https:" ? "wss" : "ws";
 }
-const defaultWebSocketUrl = "wss://mhw9nyyz6u8l3h-8000.proxy.runpod.net/asr";
+// Set default WebSocket URL based on current server
+const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const defaultWebSocketUrl = `${protocol}//${window.location.host}/asr`;
 
 // Populate default caption and input
 if (websocketDefaultSpan) websocketDefaultSpan.textContent = defaultWebSocketUrl;
@@ -909,6 +930,15 @@ let conversationState = 'idle'; // idle, listening, thinking, speaking
 
 // LLM Service URL (same server - unified service)
 let llmServiceUrl = window.location.origin;
+
+// Debug: Check if essential elements exist
+console.log('🔧 Concya initialization check:');
+console.log('- recordButton:', !!document.getElementById('recordButton'));
+console.log('- websocketInput:', !!document.getElementById('websocketInput'));
+console.log('- linesTranscript:', !!document.getElementById('linesTranscript'));
+console.log('- WebSocket URL:', websocketUrl);
+console.log('- LLM Service URL:', llmServiceUrl);
+console.log('✅ Concya ready to use!');
 function generateSessionId() {
   return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
