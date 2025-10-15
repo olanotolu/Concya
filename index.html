@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WhisperLiveKit</title>
+    <style>
+:root {
+  --bg: #ffffff;
+  --text: #111111;
+  --muted: #666666;
+  --border: #e5e5e5;
+  --chip-bg: rgba(0, 0, 0, 0.04);
+  --chip-text: #000000;
+  --spinner-border: #8d8d8d5c;
+  --spinner-top: #b0b0b0;
+  --silence-bg: #f3f3f3;
+  --loading-bg: rgba(255, 77, 77, 0.06);
+  --button-bg: #ffffff;
+  --button-border: #e9e9e9;
+  --wave-stroke: #000000;
+  --label-dia-text: #868686;
+  --label-trans-text: #111111;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0b0b;
+    --text: #e6e6e6;
+    --muted: #9aa0a6;
+    --border: #333333;
+    --chip-bg: rgba(255, 255, 255, 0.08);
+    --chip-text: #e6e6e6;
+    --spinner-border: #555555;
+    --spinner-top: #dddddd;
+    --silence-bg: #1a1a1a;
+    --loading-bg: rgba(255, 77, 77, 0.12);
+    --button-bg: #111111;
+    --button-border: #333333;
+    --wave-stroke: #e6e6e6;
+    --label-dia-text: #b3b3b3;
+    --label-trans-text: #ffffff;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0b0b;
+  --text: #e6e6e6;
+  --muted: #9aa0a6;
+  --border: #333333;
+  --chip-bg: rgba(255, 255, 255, 0.08);
+  --chip-text: #e6e6e6;
+  --spinner-border: #555555;
+  --spinner-top: #dddddd;
+  --silence-bg: #1a1a1a;
+  --loading-bg: rgba(255, 77, 77, 0.12);
+  --button-bg: #111111;
+  --button-border: #333333;
+  --wave-stroke: #e6e6e6;
+  --label-dia-text: #b3b3b3;
+  --label-trans-text: #ffffff;
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --text: #111111;
+  --muted: #666666;
+  --border: #e5e5e5;
+  --chip-bg: rgba(0, 0, 0, 0.04);
+  --chip-text: #000000;
+  --spinner-border: #8d8d8d5c;
+  --spinner-top: #b0b0b0;
+  --silence-bg: #f3f3f3;
+  --loading-bg: rgba(255, 77, 77, 0.06);
+  --button-bg: #ffffff;
+  --button-border: #e9e9e9;
+  --wave-stroke: #000000;
+  --label-dia-text: #868686;
+  --label-trans-text: #111111;
+}
+
+html.is-extension
+{
+    width: 350px;
+    height: 500px;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  margin: 0;
+  text-align: center;
+  background-color: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Record button */
+#recordButton {
+  width: 50px;
+  height: 50px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--button-bg);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid var(--button-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+#recordButton.recording {
+  width: 180px;
+  border-radius: 40px;
+  justify-content: flex-start;
+  padding-left: 20px;
+}
+
+#recordButton:active {
+  transform: scale(0.95);
+}
+
+.shape-container {
+  width: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.shape {
+  width: 25px;
+  height: 25px;
+  background-color: rgb(209, 61, 53);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+#recordButton:disabled .shape {
+  background-color: #6e6d6d;
+}
+
+#recordButton.recording .shape {
+  border-radius: 5px;
+  width: 25px;
+  height: 25px;
+}
+
+/* Recording elements */
+.recording-info {
+  display: none;
+  align-items: center;
+  margin-left: 15px;
+  flex-grow: 1;
+}
+
+#recordButton.recording .recording-info {
+  display: flex;
+}
+
+.wave-container {
+  width: 60px;
+  height: 30px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#waveCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+.timer {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  margin-left: 10px;
+}
+
+#status {
+  margin-top: 15px;
+  font-size: 16px;
+  color: var(--text);
+  margin-bottom: 0;
+}
+
+.header-container {
+  position: sticky;
+  top: 0;
+  background-color: var(--bg);
+  z-index: 100;
+  padding: 20px;
+}
+
+/* Settings */
+.settings-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  position: relative;
+  flex-wrap: wrap;
+}
+
+.buttons-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.settings-toggle {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--button-bg);
+  border: 1px solid var(--button-border);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.settings-toggle:hover {
+  background-color: var(--chip-bg);
+}
+
+.settings-toggle.active {
+  background-color: var(--chip-bg);
+}
+
+.settings-toggle img {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 10000px) {
+  .settings-toggle {
+    display: flex;
+  }
+  
+  .settings {
+    display: none;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 12px;
+  }
+  
+  .settings.visible {
+    display: flex;
+  }
+}
+
+@media (max-width: 600px) {
+  .settings-container {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .buttons-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+#chunkSelector,
+#websocketInput,
+#themeSelector,
+#microphoneSelect {
+  font-size: 16px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: var(--button-bg);
+  color: var(--text);
+  max-height: 30px;
+}
+
+#microphoneSelect {
+  width: 100%;
+  max-width: 190px;
+  min-width: 120px;
+}
+
+#chunkSelector:focus,
+#websocketInput:focus,
+#themeSelector:focus,
+#microphoneSelect:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+}
+
+label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ws-default {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Segmented pill control for Theme */
+.segmented {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--button-border);
+  background-color: var(--button-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.segmented input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-selector-container {
+  display: flex;
+  align-items: center;
+  margin-top: 17px;
+}
+
+.segmented label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.segmented label span {
+  display: none;
+}
+
+.segmented label:hover span {
+  display: inline;
+}
+
+.segmented label:hover {
+  background-color: var(--chip-bg);
+}
+
+.segmented img {
+  width: 16px;
+  height: 16px;
+}
+
+.segmented input[type="radio"]:checked + label {
+  background-color: var(--chip-bg);
+  color: var(--text);
+}
+
+.segmented input[type="radio"]:focus-visible + label,
+.segmented input[type="radio"]:focus + label {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.transcript-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.transcript-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* Transcript area */
+#linesTranscript {
+  margin: 0 auto;
+  max-width: 700px;
+  text-align: left;
+  font-size: 16px;
+}
+
+#linesTranscript p {
+  margin: 0px 0;
+}
+
+#linesTranscript strong {
+  color: var(--text);
+}
+
+#speaker {
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 2px 10px;
+  font-size: 14px;
+  margin-bottom: 0px;
+}
+
+.label_diarization {
+  background-color: var(--chip-bg);
+  border-radius: 100px;
+  padding: 2px 10px;
+  margin-left: 10px;
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 14px;
+  margin-bottom: 0px;
+  color: var(--label-dia-text);
+}
+
+.label_transcription {
+  background-color: var(--chip-bg);
+  border-radius: 100px;
+  padding: 2px 10px;
+  display: inline-block;
+  white-space: nowrap;
+  margin-left: 10px;
+  font-size: 14px;
+  margin-bottom: 0px;
+  color: var(--label-trans-text);
+}
+
+.label_translation {
+  background-color: var(--chip-bg);
+  display: inline-flex;
+  border-radius: 10px;
+  padding: 4px 8px;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text);
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.lag-diarization-value {
+    margin-left: 10px;
+}
+
+.label_translation img {
+  margin-top: 2px;
+}
+
+.label_translation img {
+  width: 12px;
+  height: 12px;
+}
+
+#timeInfo {
+  color: var(--muted);
+  margin-left: 0px;
+}
+
+.textcontent {
+  font-size: 16px;
+  padding-left: 10px;
+  margin-bottom: 10px;
+  margin-top: 1px;
+  padding-top: 5px;
+  border-radius: 0px 0px 0px 10px;
+}
+
+.buffer_diarization {
+  color: var(--label-dia-text);
+}
+
+.buffer_transcription {
+  color: #7474748c;
+  margin-left: 4px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--spinner-border);
+  border-top: 2px solid var(--spinner-top);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-bottom: 2px;
+  margin-right: 5px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.silence {
+  color: var(--muted);
+  background-color: var(--silence-bg);
+  font-size: 13px;
+  border-radius: 30px;
+  padding: 2px 10px;
+}
+
+.loading {
+  color: var(--muted);
+  background-color: var(--loading-bg);
+  border-radius: 8px 8px 8px 0px;
+  padding: 2px 10px;
+  font-size: 14px;
+  margin-bottom: 0px;
+}
+
+/* for smaller screens */
+@media (max-width: 200px) {
+  .header-container {
+    padding: 15px;
+  }
+  
+  .settings-container {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .buttons-container {
+    gap: 10px;
+  }
+  
+  .settings {
+    justify-content: center;
+    gap: 8px;
+  }
+  
+  .field {
+    align-items: center;
+  }
+  
+  #websocketInput,
+  #microphoneSelect {
+    min-width: 100px;
+    max-width: 160px;
+  }
+  
+  .theme-selector-container {
+    margin-top: 10px;
+  }
+  
+  .transcript-container {
+    padding: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-container {
+    padding: 10px;
+  }
+  
+  .settings {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  #websocketInput,
+  #microphoneSelect {
+    max-width: 140px;
+  }
+  
+  .segmented label {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  
+  .segmented img {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .transcript-container {
+    padding: 10px;
+  }
+}
+
+.label_language {
+  background-color: var(--chip-bg);
+  margin-bottom: 0px;
+  border-radius: 100px;
+  padding: 2px 8px;
+  margin-left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+
+.speaker-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: -5px;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+</style>
+</head>
+
+<body>
+    <div class="header-container">
+        <div class="settings-container">
+            <div class="buttons-container">
+                <button id="recordButton">
+                    <div class="shape-container">
+                        <div class="shape"></div>
+                    </div>
+                    <div class="recording-info">
+                        <div class="wave-container">
+                            <canvas id="waveCanvas"></canvas>
+                        </div>
+                        <div class="timer">00:00</div>
+                    </div>
+                </button>
+
+                <button id="settingsToggle" class="settings-toggle" title="Show/hide settings">
+                    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjRweCIgdmlld0JveD0iMCAtOTYwIDk2MCA5NjAiIHdpZHRoPSIyNHB4IiBmaWxsPSIjNWY2MzY4Ij48cGF0aCBkPSJNNDMzLTgwcS0yNyAwLTQ2LjUtMThUMzYzLTE0MmwtOS02NnEtMTMtNS0yNC41LTEyVDMwNy0yMzVsLTYyIDI2cS0yNSAxMS01MCAydC0zOS0zMmwtNDctODJxLTE0LTIzLTgtNDl0MjctNDNsNTMtNDBxLTEtNy0xLTEzLjV2LTI3cTAtNi41IDEtMTMuNWwtNTMtNDBxLTIxLTE3LTI3LTQzdDgtNDlsNDctODJxMTQtMjMgMzktMzJ0NTAgMmw2MiAyNnExMS04IDIzLTE1dDI0LTEybDktNjZxNC0yNiAyMy41LTQ0dDQ2LjUtMThoOTRxMjcgMCA0Ni41IDE4dDIzLjUgNDRsOSA2NnExMyA1IDI0LjUgMTJ0MjIuNSAxNWw2Mi0yNnEyNS0xMSA1MC0ydDM5IDMybDQ3IDgycTE0IDIzIDggNDl0LTI3IDQzbC01MyA0MHExIDcgMSAxMy41djI3cTAgNi41LTIgMTMuNWw1MyA0MHEyMSAxNyAyNyA0M3QtOCA0OWwtNDggODJxLTE0IDIzLTM5IDMydC01MC0ybC02MC0yNnEtMTEgOC0yMyAxNXQtMjQgMTJsLTkgNjZxLTQgMjYtMjMuNSA0NFQ1MjctODBoLTk0Wm03LTgwaDc5bDE0LTEwNnEzMS04IDU3LjUtMjMuNVQ2MzktMzI3bDk5IDQxIDM5LTY4LTg2LTY1cTUtMTQgNy0yOS41dDItMzEuNXEwLTE2LTItMzEuNXQtNy0yOS41bDg2LTY1LTM5LTY4LTk5IDQycS0yMi0yMy00OC41LTM4LjVUNTMzLTY5NGwtMTMtMTA2aC03OWwtMTQgMTA2cS0zMSA4LTU3LjUgMjMuNVQzMjEtNjMzbC05OS00MS0zOSA2OCA4NiA2NHEtNSAxNS03IDMwdC0yIDMycTAgMTYgMiAzMXQ3IDMwbC04NiA2NSAzOSA2OCA5OS00MnEyMiAyMyA0OC41IDM4LjVUNDI3LTI2NmwxMyAxMDZabTQyLTE4MHE1OCAwIDk5LTQxdDQxLTk5cTAtNTgtNDEtOTl0LTk5LTQxcS01OSAwLTk5LjUgNDFUMzQyLTQ4MHEwIDU4IDQwLjUgOTl0OTkuNSA0MVptLTItMTQwWiIvPjwvc3ZnPg==" alt="" />
+                </button>
+            </div>
+
+            <div class="settings">
+                <div class="field">
+                    <label for="websocketInput">Websocket URL</label>
+                    <input id="websocketInput" type="text" placeholder="ws://host:port/asr" />
+                </div>
+
+                <div class="field">
+                    <label id="microphoneSelectLabel" for="microphoneSelect">Select Microphone</label>
+                    <select id="microphoneSelect">
+                        <option value="">Default Microphone</option>
+                    </select>
+                </div>
+
+                <div class="theme-selector-container">
+                    <div class="segmented" role="radiogroup" aria-label="Theme selector">
+                        <input type="radio" id="theme-system" name="theme" value="system" />
+                        <label for="theme-system" title="System">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjRweCIgdmlld0JveD0iMCAtOTYwIDk2MCA5NjAiIHdpZHRoPSIyNHB4IiBmaWxsPSIjNWY2MzY4Ij48cGF0aCBkPSJNMzk2LTM5NnEtMzItMzItNTguNS02N1QyODktNTM3cS01IDE0LTYuNSAyOC41VDI4MS00ODBxMCA4MyA1OCAxNDF0MTQxIDU4cTE0IDAgMjguNS0ydDI4LjUtNnEtMzktMjItNzQtNDguNVQzOTYtMzk2Wm04NSAxOTZxLTU2IDAtMTA3LTIxdC05MS02MXEtNDAtNDAtNjEtOTF0LTIxLTEwN3EwLTUxIDE3LTk3LjV0NTAtODQuNXExMy0xNCAzMi05LjV0MjcgMjQuNXEyMSA1NSA1Mi41IDEwNHQ3My41IDkxcTQyIDQyIDkxIDczLjVUNjQ4LTMyNnEyMCA4IDI0LjUgMjd0LTkuNSAzMnEtMzggMzMtODQuNSA1MFQ0ODEtMjAwWm0yMjMtMTkycS0xNi01LTIzLTIwLjV0LTQtMzIuNXE5LTQ4LTYtOTQuNVQ2MjEtNjIxcS0zNS0zNS04MC41LTQ5LjVUNDQ4LTY3N3EtMTcgMy0zMi00dC0yMS0yM3EtNi0xNiAxLjUtMzF0MjMuNS0xOXE2OS0xNSAxMzggNC41VDY3OS02NzhxNTEgNTEgNzEgMTIwdDUgMTM4cS00IDE3LTE5IDI1dC0zMiAzWk00ODAtODQwcS0xNyAwLTI4LjUtMTEuNVQ0NDAtODgwdi00MHEwLTE3IDExLjUtMjguNVQ0ODAtOTYwcTE3IDAgMjguNSAxMS41VDUyMC05MjB2NDBxMCAxNy0xMS41IDI4LjVUNDgwLTg0MFptMCA4NDBxLTE3IDAtMjguNS0xMS41VDQ0MC00MHYtNDBxMC0xNyAxMS41LTI4LjVUNDgwLTEyMHExNyAwIDI4LjUgMTEuNVQ1MjAtODB2NDBxMCAxNy0xMS41IDI4LjVUNDgwIDBabTI1NS03MzRxLTEyLTEyLTEyLTI4LjV0MTItMjguNWwyOC0yOHExMS0xMSAyNy41LTExdDI4LjUgMTFxMTIgMTIgMTIgMjguNVQ4MTktNzYybC0yOCAyOHEtMTIgMTItMjggMTJ0LTI4LTEyWk0xNDEtMTQxcS0xMi0xMi0xMi0yOC41dDEyLTI4LjVsMjgtMjhxMTItMTIgMjgtMTJ0MjggMTJxMTIgMTIgMTIgMjguNVQyMjUtMTY5bC0yOCAyOHEtMTEgMTEtMjcuNSAxMVQxNDEtMTQxWm03MzktMjk5cS0xNyAwLTI4LjUtMTEuNVQ4NDAtNDgwcTAtMTcgMTEuNS0yOC41VDg4MC01MjBoNDBxMTcgMCAyOC41IDExLjVUOTYwLTQ4MHEwIDE3LTExLjUgMjguNVQ5MjAtNDQwaC00MFptLTg0MCAwcS0xNyAwLTI4LjUtMTEuNVQwLTQ4MHEwLTE3IDExLjUtMjguNVQ0MC01MjBoNDBxMTcgMCAyOC41IDExLjVUMTIwLTQ4MHEwIDE3LTExLjUgMjguNVQ4MC00NDBINDBabTc3OSAyOTlxLTEyIDEyLTI4LjUgMTJUNzYyLTE0MWwtMjgtMjhxLTEyLTEyLTEyLTI4dDEyLTI4cTEyLTEyIDI4LjUtMTJ0MjguNSAxMmwyOCAyOHExMSAxMSAxMSAyNy41VDgxOS0xNDFaTTIyNi03MzVxLTEyIDEyLTI4LjUgMTJUMTY5LTczNWwtMjgtMjhxLTExLTExLTExLTI3LjV0MTEtMjguNXExMi0xMiAyOC41LTEydDI4LjUgMTJsMjggMjhxMTIgMTIgMTIgMjh0LTEyIDI4Wm0xNzAgMzM5WiIvPjwvc3ZnPg==" alt="" />
+                            <span>System</span>
+                        </label>
+
+                        <input type="radio" id="theme-light" name="theme" value="light" />
+                        <label for="theme-light" title="Light">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjRweCIgdmlld0JveD0iMCAtOTYwIDk2MCA5NjAiIHdpZHRoPSIyNHB4IiBmaWxsPSIjNWY2MzY4Ij48cGF0aCBkPSJNNDgwLTM2MHE1MCAwIDg1LTM1dDM1LTg1cTAtNTAtMzUtODV0LTg1LTM1cS01MCAwLTg1IDM1dC0zNSA4NXEwIDUwIDM1IDg1dDg1IDM1Wm0wIDgwcS04MyAwLTE0MS41LTU4LjVUMjgwLTQ4MHEwLTgzIDU4LjUtMTQxLjVUNDgwLTY4MHE4MyAwIDE0MS41IDU4LjVUNjgwLTQ4MHEwIDgzLTU4LjUgMTQxLjVUNDgwLTI4MFpNODAtNDQwcS0xNyAwLTI4LjUtMTEuNVQ0MC00ODBxMC0xNyAxMS41LTI4LjVUODAtNTIwaDgwcTE3IDAgMjguNSAxMS41VDIwMC00ODBxMCAxNy0xMS41IDI4LjVUMTYwLTQ0MEg4MFptNzIwIDBxLTE3IDAtMjguNS0xMS41VDc2MC00ODBxMC0xNyAxMS41LTI4LjVUODAwLTUyMGg4MHExNyAwIDI4LjUgMTEuNVQ5MjAtNDgwcTAgMTctMTEuNSAyOC41VDg4MC00NDBoLTgwWk00ODAtNzYwcS0xNyAwLTI4LjUtMTEuNVQ0NDAtODAwdi04MHEwLTE3IDExLjUtMjguNVQ0ODAtOTIwcTE3IDAgMjguNSAxMS41VDUyMC04ODB2ODBxMCAxNy0xMS41IDI4LjVUNDgwLTc2MFptMCA3MjBxLTE3IDAtMjguNS0xMS41VDQ0MC04MHYtODBxMC0xNyAxMS41LTI4LjVUNDgwLTIwMHExNyAwIDI4LjUgMTEuNVQ1MjAtMTYwdjgwcTAgMTctMTEuNSAyOC41VDQ4MC00MFpNMjI2LTY3OGwtNDMtNDJxLTEyLTExLTExLjUtMjh0MTEuNS0yOXExMi0xMiAyOS0xMnQyOCAxMmw0MiA0M3ExMSAxMiAxMSAyOHQtMTEgMjhxLTExIDEyLTI3LjUgMTEuNVQyMjYtNjc4Wm00OTQgNDk1LTQyLTQzcS0xMS0xMi0xMS0yOC41dDExLTI3LjVxMTEtMTIgMjcuNS0xMS41VDczNC0yODJsNDMgNDJxMTIgMTEgMTEuNSAyOFQ3NzctMTgzcS0xMiAxMi0yOSAxMnQtMjgtMTJabS00Mi00OTVxLTEyLTExLTExLjUtMjcuNVQ2NzgtNzM0bDQyLTQzcTExLTEyIDI4LTExLjV0MjkgMTEuNXExMiAxMiAxMiAyOXQtMTIgMjhsLTQzIDQycS0xMiAxMS0yOCAxMXQtMjgtMTFaTTE4My0xODNxLTEyLTEyLTEyLTI5dDEyLTI4bDQzLTQycTEyLTExIDI4LjUtMTF0MjcuNSAxMXExMiAxMSAxMS41IDI3LjVUMjgyLTIyNmwtNDIgNDNxLTExIDEyLTI4IDExLjVUMTgzLTE4M1ptMjk3LTI5N1oiLz48L3N2Zz4=" alt="" />
+                            <span>Light</span>
+                        </label>
+
+                        <input type="radio" id="theme-dark" name="theme" value="dark" />
+                        <label for="theme-dark" title="Dark">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjRweCIgdmlld0JveD0iMCAtOTYwIDk2MCA5NjAiIHdpZHRoPSIyNHB4IiBmaWxsPSIjNWY2MzY4Ij48cGF0aCBkPSJNNDgwLTEyMHEtMTUxIDAtMjU1LjUtMTA0LjVUMTIwLTQ4MHEwLTEzOCA5MC0yMzkuNVQ0NDAtODM4cTEzLTIgMjMgMy41dDE2IDE0LjVxNiA5IDYuNSAyMXQtNy41IDIzcS0xNyAyNi0yNS41IDU1dC04LjUgNjFxMCA5MCA2MyAxNTN0MTUzIDYzcTMxIDAgNjEuNS05dDU0LjUtMjVxMTEtNyAyMi41LTYuNVQ4MTktNDc5cTEwIDUgMTUuNSAxNXQzLjUgMjRxLTE0IDEzOC0xMTcuNSAyMjlUNDgwLTEyMFptMC04MHE4OCAwIDE1OC00OC41VDc0MC0zNzVxLTIwIDUtNDAgOHQtNDAgM3EtMTIzIDAtMjA5LjUtODYuNVQzNjQtNjYwcTAtMjAgMy00MHQ4LTQwcS03OCAzMi0xMjYuNSAxMDJUMjAwLTQ4MHEwIDExNiA4MiAxOTh0MTk4IDgyWm0tMTAtMjcwWiIvPjwvc3ZnPg==" alt="" />
+                            <span>Dark</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <p id="status"></p>
+    </div>
+
+    <div class="transcript-container">
+        <div id="linesTranscript"></div>
+    </div>
+    
+    <script>
+const isExtension = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL;
+if (isExtension) {
+  document.documentElement.classList.add('is-extension');
+}
+const isWebContext = !isExtension;
+
+let isRecording = false;
+let websocket = null;
+let recorder = null;
+let chunkDuration = 100;
+let websocketUrl = "wss://mhw9nyyz6u8l3h-8000.proxy.runpod.net/asr";
+let userClosing = false;
+let wakeLock = null;
+let startTime = null;
+let timerInterval = null;
+let audioContext = null;
+let analyser = null;
+let microphone = null;
+let workletNode = null;
+let recorderWorker = null;
+let waveCanvas = document.getElementById("waveCanvas");
+let waveCtx = waveCanvas.getContext("2d");
+let animationFrame = null;
+let waitingForStop = false;
+let lastReceivedData = null;
+let lastSignature = null;
+let availableMicrophones = [];
+let selectedMicrophoneId = null;
+let serverUseAudioWorklet = null;
+let configReadyResolve;
+const configReady = new Promise((r) => (configReadyResolve = r));
+let outputAudioContext = null;
+let audioSource = null;
+
+waveCanvas.width = 60 * (window.devicePixelRatio || 1);
+waveCanvas.height = 30 * (window.devicePixelRatio || 1);
+waveCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+const statusText = document.getElementById("status");
+const recordButton = document.getElementById("recordButton");
+const chunkSelector = document.getElementById("chunkSelector");
+const websocketInput = document.getElementById("websocketInput");
+const websocketDefaultSpan = document.getElementById("wsDefaultUrl");
+const linesTranscriptDiv = document.getElementById("linesTranscript");
+const timerElement = document.querySelector(".timer");
+const themeRadios = document.querySelectorAll('input[name="theme"]');
+const microphoneSelect = document.getElementById("microphoneSelect");
+
+const settingsToggle = document.getElementById("settingsToggle");
+const settingsDiv = document.querySelector(".settings");
+
+// if (isExtension) {
+//   chrome.runtime.onInstalled.addListener((details) => {
+//     if (details.reason.search(/install/g) === -1) {
+//       return;
+//     }
+//     chrome.tabs.create({
+//       url: chrome.runtime.getURL("welcome.html"),
+//       active: true
+//     });
+//   });
+// }
+
+const translationIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="12px" viewBox="0 -960 960 960" width="12px" fill="#5f6368"><path d="m603-202-34 97q-4 11-14 18t-22 7q-20 0-32.5-16.5T496-133l152-402q5-11 15-18t22-7h30q12 0 22 7t15 18l152 403q8 19-4 35.5T868-80q-13 0-22.5-7T831-106l-34-96H603ZM362-401 188-228q-11 11-27.5 11.5T132-228q-11-11-11-28t11-28l174-174q-35-35-63.5-80T190-640h84q20 39 40 68t48 58q33-33 68.5-92.5T484-720H80q-17 0-28.5-11.5T40-760q0-17 11.5-28.5T80-800h240v-40q0-17 11.5-28.5T360-880q17 0 28.5 11.5T400-840v40h240q17 0 28.5 11.5T680-760q0 17-11.5 28.5T640-720h-76q-21 72-63 148t-83 116l96 98-30 82-122-125Zm266 129h144l-72-204-72 204Z"/></svg>`
+const silenceIcon = `<svg xmlns="http://www.w3.org/2000/svg" style="vertical-align: text-bottom;" height="14px" viewBox="0 -960 960 960" width="14px" fill="#5f6368"><path d="M514-556 320-752q9-3 19-5.5t21-2.5q66 0 113 47t47 113q0 11-1.5 22t-4.5 22ZM40-200v-32q0-33 17-62t47-44q51-26 115-44t141-18q26 0 49.5 2.5T456-392l-56-54q-9 3-19 4.5t-21 1.5q-66 0-113-47t-47-113q0-11 1.5-21t4.5-19L84-764q-11-11-11-28t11-28q12-12 28.5-12t27.5 12l675 685q11 11 11.5 27.5T816-80q-11 13-28 12.5T759-80L641-200h39q0 33-23.5 56.5T600-120H120q-33 0-56.5-23.5T40-200Zm80 0h480v-32q0-14-4.5-19.5T580-266q-36-18-92.5-36T360-320q-71 0-127.5 18T140-266q-9 5-14.5 14t-5.5 20v32Zm240 0Zm560-400q0 69-24.5 131.5T829-355q-12 14-30 15t-32-13q-13-13-12-31t12-33q30-38 46.5-85t16.5-98q0-51-16.5-97T767-781q-12-15-12.5-33t12.5-32q13-14 31.5-13.5T829-845q42 51 66.5 113.5T920-600Zm-182 0q0 32-10 61.5T700-484q-11 15-29.5 15.5T638-482q-13-13-13.5-31.5T633-549q6-11 9.5-24t3.5-27q0-14-3.5-27t-9.5-25q-9-17-8.5-35t13.5-31q14-14 32.5-13.5T700-716q18 25 28 54.5t10 61.5Z"/></svg>`;
+const languageIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="12" viewBox="0 -960 960 960" width="12" fill="#5f6368"><path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-155.5t86-127Q252-817 325-848.5T480-880q83 0 155.5 31.5t127 86q54.5 54.5 86 127T880-480q0 82-31.5 155t-86 127.5q-54.5 54.5-127 86T480-80Zm0-82q26-36 45-75t31-83H404q12 44 31 83t45 75Zm-104-16q-18-33-31.5-68.5T322-320H204q29 50 72.5 87t99.5 55Zm208 0q56-18 99.5-55t72.5-87H638q-9 38-22.5 73.5T584-178ZM170-400h136q-3-20-4.5-39.5T300-480q0-21 1.5-40.5T306-560H170q-5 20-7.5 39.5T160-480q0 21 2.5 40.5T170-400Zm216 0h188q3-20 4.5-39.5T580-480q0-21-1.5-40.5T574-560H386q-3 20-4.5 39.5T380-480q0 21 1.5 40.5T386-400Zm268 0h136q5-20 7.5-39.5T800-480q0-21-2.5-40.5T790-560H654q3 20 4.5 39.5T660-480q0 21-1.5 40.5T654-400Zm-16-240h118q-29-50-72.5-87T584-782q18 33 31.5 68.5T638-640Zm-234 0h152q-12-44-31-83t-45-75q-26 36-45 75t-31 83Zm-200 0h118q9-38 22.5-73.5T376-782q-56 18-99.5 55T204-640Z"/></svg>`
+const speakerIcon = `<svg xmlns="http://www.w3.org/2000/svg" height="16px" style="vertical-align: text-bottom;" viewBox="0 -960 960 960" width="16px" fill="#5f6368"><path d="M480-480q-66 0-113-47t-47-113q0-66 47-113t113-47q66 0 113 47t47 113q0 66-47 113t-113 47ZM160-240v-32q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v32q0 33-23.5 56.5T720-160H240q-33 0-56.5-23.5T160-240Zm80 0h480v-32q0-11-5.5-20T700-306q-54-27-109-40.5T480-360q-56 0-111 13.5T260-306q-9 5-14.5 14t-5.5 20v32Zm240-320q33 0 56.5-23.5T560-640q0-33-23.5-56.5T480-720q-33 0-56.5 23.5T400-640q0 33 23.5 56.5T480-560Zm0-80Zm0 400Z"/></svg>`;
+
+function getWaveStroke() {
+  const styles = getComputedStyle(document.documentElement);
+  const v = styles.getPropertyValue("--wave-stroke").trim();
+  return v || "#000";
+}
+
+let waveStroke = getWaveStroke();
+function updateWaveStroke() {
+  waveStroke = getWaveStroke();
+}
+
+function applyTheme(pref) {
+  if (pref === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+  } else if (pref === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+  updateWaveStroke();
+}
+
+// Persisted theme preference
+const savedThemePref = localStorage.getItem("themePreference") || "system";
+applyTheme(savedThemePref);
+if (themeRadios.length) {
+  themeRadios.forEach((r) => {
+    r.checked = r.value === savedThemePref;
+    r.addEventListener("change", () => {
+      if (r.checked) {
+        localStorage.setItem("themePreference", r.value);
+        applyTheme(r.value);
+      }
+    });
+  });
+}
+
+// React to OS theme changes when in "system" mode
+const darkMq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+const handleOsThemeChange = () => {
+  const pref = localStorage.getItem("themePreference") || "system";
+  if (pref === "system") updateWaveStroke();
+};
+if (darkMq && darkMq.addEventListener) {
+  darkMq.addEventListener("change", handleOsThemeChange);
+} else if (darkMq && darkMq.addListener) {
+  // deprecated, but included for Safari compatibility
+  darkMq.addListener(handleOsThemeChange);
+}
+
+async function enumerateMicrophones() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(track => track.stop());
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    availableMicrophones = devices.filter(device => device.kind === 'audioinput');
+
+    populateMicrophoneSelect();
+    console.log(`Found ${availableMicrophones.length} microphone(s)`);
+  } catch (error) {
+    console.error('Error enumerating microphones:', error);
+    statusText.textContent = "Error accessing microphones. Please grant permission.";
+  }
+}
+
+function populateMicrophoneSelect() {
+  if (!microphoneSelect) return;
+
+  microphoneSelect.innerHTML = '<option value="">Default Microphone</option>';
+
+  availableMicrophones.forEach((device, index) => {
+    const option = document.createElement('option');
+    option.value = device.deviceId;
+    option.textContent = device.label || `Microphone ${index + 1}`;
+    microphoneSelect.appendChild(option);
+  });
+
+  const savedMicId = localStorage.getItem('selectedMicrophone');
+  if (savedMicId && availableMicrophones.some(mic => mic.deviceId === savedMicId)) {
+    microphoneSelect.value = savedMicId;
+    selectedMicrophoneId = savedMicId;
+  }
+}
+
+function handleMicrophoneChange() {
+  selectedMicrophoneId = microphoneSelect.value || null;
+  localStorage.setItem('selectedMicrophone', selectedMicrophoneId || '');
+
+  const selectedDevice = availableMicrophones.find(mic => mic.deviceId === selectedMicrophoneId);
+  const deviceName = selectedDevice ? selectedDevice.label : 'Default Microphone';
+
+  console.log(`Selected microphone: ${deviceName}`);
+  statusText.textContent = `Microphone changed to: ${deviceName}`;
+
+  if (isRecording) {
+    statusText.textContent = "Switching microphone... Please wait.";
+    stopRecording().then(() => {
+      setTimeout(() => {
+        toggleRecording();
+      }, 1000);
+    });
+  }
+}
+
+// Helpers
+function fmt1(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n.toFixed(1) : x;
+}
+
+let host, port, protocol;
+port = 8000;
+if (isExtension) {
+    host = "localhost";
+    protocol = "ws";
+} else {
+    host = window.location.hostname || "localhost";
+    port = window.location.port;
+    protocol = window.location.protocol === "https:" ? "wss" : "ws";
+}
+const defaultWebSocketUrl = "wss://mhw9nyyz6u8l3h-8000.proxy.runpod.net/asr";
+
+// Populate default caption and input
+if (websocketDefaultSpan) websocketDefaultSpan.textContent = defaultWebSocketUrl;
+websocketInput.value = defaultWebSocketUrl;
+websocketUrl = defaultWebSocketUrl;
+
+// Session management for LLM conversations
+let sessionId = generateSessionId();
+let isProcessingLLM = false;
+
+// LLM Service URL (same server - unified service)
+let llmServiceUrl = window.location.origin;
+function generateSessionId() {
+  return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Optional chunk selector (guard for presence)
+if (chunkSelector) {
+  chunkSelector.addEventListener("change", () => {
+    chunkDuration = parseInt(chunkSelector.value);
+  });
+}
+
+// WebSocket input change handling
+websocketInput.addEventListener("change", () => {
+  const urlValue = websocketInput.value.trim();
+  if (!urlValue.startsWith("ws://") && !urlValue.startsWith("wss://")) {
+    statusText.textContent = "Invalid WebSocket URL (must start with ws:// or wss://)";
+    return;
+  }
+  websocketUrl = urlValue;
+  statusText.textContent = "WebSocket URL updated. Ready to connect.";
+});
+
+// LLM Integration Functions
+async function sendToLLM(text, language) {
+  if (!text.trim()) return;
+  
+  console.log(`🗣️  [STT→LLM] Sending to LLM: "${text}" | Language: ${language} | Session: ${sessionId}`);
+  console.log(`📡 [LLM] Service URL: ${llmServiceUrl}`);
+  
+  isProcessingLLM = true;
+  
+  try {
+    const response = await fetch(`${llmServiceUrl}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text,
+        session_id: sessionId,
+        language: language
+      })
+    });
+    
+    console.log(`✅ [LLM] Response status: ${response.status}`);
+    
+    const data = await response.json();
+    console.log(`🤖 [LLM] Reply received: "${data.reply}"`);
+    
+    // Show reservation completion status
+    if (data.is_complete) {
+      console.log(`✅ [RESERVATION] Complete! Data:`, data.reservation_data);
+    }
+    
+    displayAIResponse(data.reply);
+    
+    // Play TTS response
+    if (data.reply) {
+      console.log(`🔊 [TTS] Requesting audio synthesis...`);
+      await playTTS(data.reply);
+    }
+  } catch (err) {
+    console.error('❌ [LLM] Error:', err);
+    console.error('❌ [LLM] Stack trace:', err.stack);
+  } finally {
+    isProcessingLLM = false;
+  }
+}
+
+function displayAIResponse(reply) {
+  const aiLine = document.createElement('p');
+  aiLine.innerHTML = `<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2px 10px; border-radius: 100px; font-size: 14px; margin-right: 8px;">🤖 Concya</span><strong>${reply}</strong>`;
+  aiLine.style.marginTop = '12px';
+  aiLine.style.marginBottom = '12px';
+  linesTranscriptDiv.appendChild(aiLine);
+  linesTranscriptDiv.scrollTop = linesTranscriptDiv.scrollHeight;
+}
+
+async function playTTS(text) {
+  try {
+    console.log(`🔊 [TTS] Fetching: ${llmServiceUrl}/speak`);
+    
+    const response = await fetch(`${llmServiceUrl}/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, voice: 'alloy' })
+    });
+    
+    console.log(`✅ [TTS] Response status: ${response.status}`);
+    
+    const audioBlob = await response.blob();
+    console.log(`🎵 [TTS] Audio blob size: ${audioBlob.size} bytes`);
+    
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    
+    console.log(`▶️  [TTS] Playing audio...`);
+    await audio.play();
+    console.log(`✅ [TTS] Audio playback started`);
+  } catch (err) {
+    console.warn('❌ [TTS] Playback failed:', err);
+  }
+}
+
+function setupWebSocket() {
+  return new Promise((resolve, reject) => {
+    try {
+      websocket = new WebSocket(websocketUrl);
+    } catch (error) {
+      statusText.textContent = "Invalid WebSocket URL. Please check and try again.";
+      reject(error);
+      return;
+    }
+
+    websocket.onopen = () => {
+      statusText.textContent = "Connected to server.";
+      resolve();
+    };
+
+    websocket.onclose = () => {
+      if (userClosing) {
+        if (waitingForStop) {
+          statusText.textContent = "Processing finalized or connection closed.";
+          if (lastReceivedData) {
+            renderLinesWithBuffer(
+              lastReceivedData.lines || [],
+              lastReceivedData.buffer_diarization || "",
+              lastReceivedData.buffer_transcription || "",
+              0,
+              0,
+              true
+            );
+          }
+        }
+      } else {
+        statusText.textContent = "Disconnected from the WebSocket server. (Check logs if model is loading.)";
+        if (isRecording) {
+          stopRecording();
+        }
+      }
+      isRecording = false;
+      waitingForStop = false;
+      userClosing = false;
+      lastReceivedData = null;
+      websocket = null;
+      updateUI();
+    };
+
+    websocket.onerror = () => {
+      statusText.textContent = "Error connecting to WebSocket.";
+      reject(new Error("Error connecting to WebSocket"));
+    };
+
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "config") {
+        serverUseAudioWorklet = !!data.useAudioWorklet;
+        statusText.textContent = serverUseAudioWorklet
+          ? "Connected. Using AudioWorklet (PCM)."
+          : "Connected. Using MediaRecorder (WebM).";
+        if (configReadyResolve) configReadyResolve();
+        return;
+      }
+
+      if (data.type === "ready_to_stop") {
+        console.log("Ready to stop received, finalizing display and closing WebSocket.");
+        waitingForStop = false;
+
+        if (lastReceivedData) {
+          renderLinesWithBuffer(
+            lastReceivedData.lines || [],
+            lastReceivedData.buffer_diarization || "",
+            lastReceivedData.buffer_transcription || "",
+            0,
+            0,
+            true
+          );
+        }
+        statusText.textContent = "Finished processing audio! Ready to record again.";
+        recordButton.disabled = false;
+
+        if (websocket) {
+          websocket.close();
+        }
+        return;
+      }
+
+      lastReceivedData = data;
+
+      const {
+        lines = [],
+        buffer_transcription = "",
+        buffer_diarization = "",
+        remaining_time_transcription = 0,
+        remaining_time_diarization = 0,
+        status = "active_transcription",
+      } = data;
+
+      renderLinesWithBuffer(
+        lines,
+        buffer_diarization,
+        buffer_transcription,
+        remaining_time_diarization,
+        remaining_time_transcription,
+        false,
+        status
+      );
+
+      // Auto-send completed sentences to LLM
+      if (lines && lines.length > 0) {
+        const lastLine = lines[lines.length - 1];
+        if (lastLine.text && !isProcessingLLM && lastLine.speaker > 0) {
+          sendToLLM(lastLine.text, lastLine.detected_language || 'en');
+        }
+      }
+    };
+  });
+}
+
+function renderLinesWithBuffer(
+  lines,
+  buffer_diarization,
+  buffer_transcription,
+  remaining_time_diarization,
+  remaining_time_transcription,
+  isFinalizing = false,
+  current_status = "active_transcription"
+) {
+  if (current_status === "no_audio_detected") {
+    linesTranscriptDiv.innerHTML =
+      "<p style='text-align: center; color: var(--muted); margin-top: 20px;'><em>No audio detected...</em></p>";
+    return;
+  }
+
+  const showLoading = !isFinalizing && (lines || []).some((it) => it.speaker == 0);
+  const showTransLag = !isFinalizing && remaining_time_transcription > 0;
+  const showDiaLag = !isFinalizing && !!buffer_diarization && remaining_time_diarization > 0;
+  const signature = JSON.stringify({
+    lines: (lines || []).map((it) => ({ speaker: it.speaker, text: it.text, start: it.start, end: it.end, detected_language: it.detected_language })),
+    buffer_transcription: buffer_transcription || "",
+    buffer_diarization: buffer_diarization || "",
+    status: current_status,
+    showLoading,
+    showTransLag,
+    showDiaLag,
+    isFinalizing: !!isFinalizing,
+  });
+  if (lastSignature === signature) {
+    const t = document.querySelector(".lag-transcription-value");
+    if (t) t.textContent = fmt1(remaining_time_transcription);
+    const d = document.querySelector(".lag-diarization-value");
+    if (d) d.textContent = fmt1(remaining_time_diarization);
+    const ld = document.querySelector(".loading-diarization-value");
+    if (ld) ld.textContent = fmt1(remaining_time_diarization);
+    return;
+  }
+  lastSignature = signature;
+
+  const linesHtml = (lines || [])
+    .map((item, idx) => {
+      let timeInfo = "";
+      if (item.start !== undefined && item.end !== undefined) {
+        timeInfo = ` ${item.start} - ${item.end}`;
+      }
+
+      let speakerLabel = "";
+      if (item.speaker === -2) {
+        speakerLabel = `<span class="silence">${silenceIcon}<span id='timeInfo'>${timeInfo}</span></span>`;
+      } else if (item.speaker == 0 && !isFinalizing) {
+        speakerLabel = `<span class='loading'><span class="spinner"></span><span id='timeInfo'><span class="loading-diarization-value">${fmt1(
+          remaining_time_diarization
+        )}</span> second(s) of audio are undergoing diarization</span></span>`;
+      } else if (item.speaker !== 0) {
+        const speakerNum = `<span class="speaker-badge">${item.speaker}</span>`;
+        speakerLabel = `<span id="speaker">${speakerIcon}${speakerNum}<span id='timeInfo'>${timeInfo}</span></span>`;
+
+        if (item.detected_language) {
+          speakerLabel += `<span class="label_language">${languageIcon}<span>${item.detected_language}</span></span>`;
+        }
+      }
+
+      let currentLineText = item.text || "";
+
+      if (idx === lines.length - 1) {
+        if (!isFinalizing && item.speaker !== -2) {
+          if (remaining_time_transcription > 0) {
+            speakerLabel += `<span class="label_transcription"><span class="spinner"></span>Transcription lag <span id='timeInfo'><span class="lag-transcription-value">${fmt1(
+              remaining_time_transcription
+            )}</span>s</span></span>`;
+          }
+          if (buffer_diarization && remaining_time_diarization > 0) {
+            speakerLabel += `<span class="label_diarization"><span class="spinner"></span>Diarization lag<span id='timeInfo'><span class="lag-diarization-value">${fmt1(
+              remaining_time_diarization
+            )}</span>s</span></span>`;
+          }
+        }
+
+        if (buffer_diarization) {
+          if (isFinalizing) {
+            currentLineText +=
+              (currentLineText.length > 0 && buffer_diarization.trim().length > 0 ? " " : "") + buffer_diarization.trim();
+          } else {
+            currentLineText += `<span class="buffer_diarization">${buffer_diarization}</span>`;
+          }
+        }
+        if (buffer_transcription) {
+          if (isFinalizing) {
+            currentLineText +=
+              (currentLineText.length > 0 && buffer_transcription.trim().length > 0 ? " " : "") +
+              buffer_transcription.trim();
+          } else {
+            currentLineText += `<span class="buffer_transcription">${buffer_transcription}</span>`;
+          }
+        }
+      }
+      
+      if (item.translation) {
+        currentLineText += `
+            <div>
+                <div class="label_translation">
+                    ${translationIcon}
+                    <span>${item.translation}</span>
+                </div>
+            </div>`;
+      }
+
+      return currentLineText.trim().length > 0 || speakerLabel.length > 0
+        ? `<p>${speakerLabel}<br/><div class='textcontent'>${currentLineText}</div></p>`
+        : `<p>${speakerLabel}<br/></p>`;
+    })
+    .join("");
+
+  linesTranscriptDiv.innerHTML = linesHtml;
+  const transcriptContainer = document.querySelector('.transcript-container');
+  if (transcriptContainer) {
+    transcriptContainer.scrollTo({ top: transcriptContainer.scrollHeight, behavior: "smooth" });
+  }
+}
+
+function updateTimer() {
+  if (!startTime) return;
+
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const minutes = Math.floor(elapsed / 60).toString().padStart(2, "0");
+  const seconds = (elapsed % 60).toString().padStart(2, "0");
+  timerElement.textContent = `${minutes}:${seconds}`;
+}
+
+function drawWaveform() {
+  if (!analyser) return;
+
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  analyser.getByteTimeDomainData(dataArray);
+
+  waveCtx.clearRect(
+    0,
+    0,
+    waveCanvas.width / (window.devicePixelRatio || 1),
+    waveCanvas.height / (window.devicePixelRatio || 1)
+  );
+  waveCtx.lineWidth = 1;
+  waveCtx.strokeStyle = waveStroke;
+  waveCtx.beginPath();
+
+  const sliceWidth = (waveCanvas.width / (window.devicePixelRatio || 1)) / bufferLength;
+  let x = 0;
+
+  for (let i = 0; i < bufferLength; i++) {
+    const v = dataArray[i] / 128.0;
+    const y = (v * (waveCanvas.height / (window.devicePixelRatio || 1))) / 2;
+
+    if (i === 0) {
+      waveCtx.moveTo(x, y);
+    } else {
+      waveCtx.lineTo(x, y);
+    }
+
+    x += sliceWidth;
+  }
+
+  waveCtx.lineTo(
+    waveCanvas.width / (window.devicePixelRatio || 1),
+    (waveCanvas.height / (window.devicePixelRatio || 1)) / 2
+  );
+  waveCtx.stroke();
+
+  animationFrame = requestAnimationFrame(drawWaveform);
+}
+
+async function startRecording() {
+  try {
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+    } catch (err) {
+      console.log("Error acquiring wake lock.");
+    }
+
+    let stream;
+    
+    // chromium extension. in the future, both chrome page audio and mic will be used
+    if (isExtension) {
+      try {
+        stream = await new Promise((resolve, reject) => {
+          chrome.tabCapture.capture({audio: true}, (s) => {
+            if (s) {
+              resolve(s);
+            } else {
+              reject(new Error('Tab capture failed or not available'));
+            }
+          });
+        });
+        
+        try {
+          outputAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+          audioSource = outputAudioContext.createMediaStreamSource(stream);
+          audioSource.connect(outputAudioContext.destination);
+        } catch (audioError) {
+          console.warn('could not preserve system audio:', audioError);
+        }
+        
+        statusText.textContent = "Using tab audio capture.";
+      } catch (tabError) {
+        console.log('Tab capture not available, falling back to microphone', tabError);
+        const audioConstraints = selectedMicrophoneId
+          ? { audio: { deviceId: { exact: selectedMicrophoneId } } }
+          : { audio: true };
+        stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+        statusText.textContent = "Using microphone audio.";
+      }
+    } else if (isWebContext) {
+      const audioConstraints = selectedMicrophoneId 
+        ? { audio: { deviceId: { exact: selectedMicrophoneId } } }
+        : { audio: true };
+      stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+    }
+
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    microphone = audioContext.createMediaStreamSource(stream);
+    microphone.connect(analyser);
+
+    if (serverUseAudioWorklet) {
+      if (!audioContext.audioWorklet) {
+        throw new Error("AudioWorklet is not supported in this browser");
+      }
+      const workletBlob = new Blob([`class PCMForwarder extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0];
+    if (input && input[0] && input[0].length) {
+      // Forward mono channel (0). If multi-channel, downmixing can be added here.
+      const channelData = input[0];
+      const copy = new Float32Array(channelData.length);
+      copy.set(channelData);
+      this.port.postMessage(copy, [copy.buffer]);
+    }
+    // Keep processor alive
+    return true;
+  }
+}
+
+registerProcessor('pcm-forwarder', PCMForwarder);
+`], { type: "application/javascript" });
+const workletUrl = URL.createObjectURL(workletBlob);
+await audioContext.audioWorklet.addModule(workletUrl);
+      workletNode = new AudioWorkletNode(audioContext, "pcm-forwarder", { numberOfInputs: 1, numberOfOutputs: 0, channelCount: 1 });
+      microphone.connect(workletNode);
+
+      const workerBlob = new Blob([`let sampleRate = 48000;
+let targetSampleRate = 16000;
+
+self.onmessage = function (e) {
+  switch (e.data.command) {
+    case 'init':
+      init(e.data.config);
+      break;
+    case 'record':
+      record(e.data.buffer);
+      break;
+  }
+};
+
+function init(config) {
+  sampleRate = config.sampleRate;
+  targetSampleRate = config.targetSampleRate || 16000;
+}
+
+function record(inputBuffer) {
+  const buffer = new Float32Array(inputBuffer);
+  const resampledBuffer = resample(buffer, sampleRate, targetSampleRate);
+  const pcmBuffer = toPCM(resampledBuffer);
+  self.postMessage({ buffer: pcmBuffer }, [pcmBuffer]);
+}
+
+function resample(buffer, from, to) {
+    if (from === to) {
+        return buffer;
+    }
+    const ratio = from / to;
+    const newLength = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+        }
+        result[offsetResult] = accum / count;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+}
+
+function toPCM(input) {
+  const buffer = new ArrayBuffer(input.length * 2);
+  const view = new DataView(buffer);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return buffer;
+}
+`], { type: "application/javascript" });
+const workerUrl = URL.createObjectURL(workerBlob);
+recorderWorker = new Worker(workerUrl);
+      recorderWorker.postMessage({
+        command: "init",
+        config: {
+          sampleRate: audioContext.sampleRate,
+        },
+      });
+
+      recorderWorker.onmessage = (e) => {
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(e.data.buffer);
+        }
+      };
+
+      workletNode.port.onmessage = (e) => {
+        const data = e.data;
+        const ab = data instanceof ArrayBuffer ? data : data.buffer;
+        recorderWorker.postMessage(
+          {
+            command: "record",
+            buffer: ab,
+          },
+          [ab]
+        );
+      };
+    } else {
+      try {
+        recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      } catch (e) {
+        recorder = new MediaRecorder(stream);
+      }
+      recorder.ondataavailable = (e) => {
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          if (e.data && e.data.size > 0) {
+            websocket.send(e.data);
+          }
+        }
+      };
+      recorder.start(chunkDuration);
+    }
+
+    startTime = Date.now();
+    timerInterval = setInterval(updateTimer, 1000);
+    drawWaveform();
+
+    isRecording = true;
+    updateUI();
+  } catch (err) {
+    if (window.location.hostname === "0.0.0.0") {
+      statusText.textContent =
+        "Error accessing microphone. Browsers may block microphone access on 0.0.0.0. Try using localhost:8000 instead.";
+    } else {
+      statusText.textContent = "Error accessing microphone. Please allow microphone access.";
+    }
+    console.error(err);
+  }
+}
+
+async function stopRecording() {
+  if (wakeLock) {
+    try {
+      await wakeLock.release();
+    } catch (e) {
+      // ignore
+    }
+    wakeLock = null;
+  }
+
+  userClosing = true;
+  waitingForStop = true;
+
+  if (websocket && websocket.readyState === WebSocket.OPEN) {
+    const emptyBlob = new Blob([], { type: "audio/webm" });
+    websocket.send(emptyBlob);
+    statusText.textContent = "Recording stopped. Processing final audio...";
+  }
+
+  if (recorder) {
+    try {
+      recorder.stop();
+    } catch (e) {
+    }
+    recorder = null;
+  }
+
+  if (recorderWorker) {
+    recorderWorker.terminate();
+    recorderWorker = null;
+  }
+  
+  if (workletNode) {
+    try {
+      workletNode.port.onmessage = null;
+    } catch (e) {}
+    try {
+      workletNode.disconnect();
+    } catch (e) {}
+    workletNode = null;
+  }
+
+  if (microphone) {
+    microphone.disconnect();
+    microphone = null;
+  }
+
+  if (analyser) {
+    analyser = null;
+  }
+
+  if (audioContext && audioContext.state !== "closed") {
+    try {
+      await audioContext.close();
+    } catch (e) {
+      console.warn("Could not close audio context:", e);
+    }
+    audioContext = null;
+  }
+
+  if (audioSource) {
+    audioSource.disconnect();
+    audioSource = null;
+  }
+
+  if (outputAudioContext && outputAudioContext.state !== "closed") {
+    outputAudioContext.close()
+    outputAudioContext = null;
+  }
+
+  if (animationFrame) {
+    cancelAnimationFrame(animationFrame);
+    animationFrame = null;
+  }
+
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+  timerElement.textContent = "00:00";
+  startTime = null;
+
+  isRecording = false;
+  updateUI();
+}
+
+async function toggleRecording() {
+  if (!isRecording) {
+    if (waitingForStop) {
+      console.log("Waiting for stop, early return");
+      return;
+    }
+    console.log("Connecting to WebSocket");
+    try {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        await configReady;
+        await startRecording();
+      } else {
+        await setupWebSocket();
+        await configReady;
+        await startRecording();
+      }
+    } catch (err) {
+      statusText.textContent = "Could not connect to WebSocket or access mic. Aborted.";
+      console.error(err);
+    }
+  } else {
+    console.log("Stopping recording");
+    stopRecording();
+  }
+}
+
+function updateUI() {
+  recordButton.classList.toggle("recording", isRecording);
+  recordButton.disabled = waitingForStop;
+
+  if (waitingForStop) {
+    if (statusText.textContent !== "Recording stopped. Processing final audio...") {
+      statusText.textContent = "Please wait for processing to complete...";
+    }
+  } else if (isRecording) {
+    statusText.textContent = "";
+  } else {
+    if (
+      statusText.textContent !== "Finished processing audio! Ready to record again." &&
+      statusText.textContent !== "Processing finalized or connection closed."
+    ) {
+      statusText.textContent = "Click to start transcription";
+    }
+  }
+  if (!waitingForStop) {
+    recordButton.disabled = false;
+  }
+}
+
+recordButton.addEventListener("click", toggleRecording);
+
+if (microphoneSelect) {
+  microphoneSelect.addEventListener("change", handleMicrophoneChange);
+}
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await enumerateMicrophones();
+  } catch (error) {
+    console.log("Could not enumerate microphones on load:", error);
+  }
+});
+navigator.mediaDevices.addEventListener('devicechange', async () => {
+  console.log('Device change detected, re-enumerating microphones');
+  try {
+    await enumerateMicrophones();
+            } catch (error) {
+    console.log("Error re-enumerating microphones:", error);
+  }
+});
+
+
+settingsToggle.addEventListener("click", () => {
+settingsDiv.classList.toggle("visible");
+settingsToggle.classList.toggle("active");
+});
+
+if (isExtension) {
+  async function checkAndRequestPermissions() {
+    const micPermission = await navigator.permissions.query({
+      name: "microphone",
+    });
+
+    const permissionDisplay = document.getElementById("audioPermission");
+    if (permissionDisplay) {
+      permissionDisplay.innerText = `MICROPHONE: ${micPermission.state}`;
+    }
+
+    // if (micPermission.state !== "granted") {
+    //   chrome.tabs.create({ url: "welcome.html" });
+    // }
+
+    const intervalId = setInterval(async () => {
+      const micPermission = await navigator.permissions.query({
+        name: "microphone",
+      });
+      if (micPermission.state === "granted") {
+        if (permissionDisplay) {
+          permissionDisplay.innerText = `MICROPHONE: ${micPermission.state}`;
+        }
+        clearInterval(intervalId);
+      }
+    }, 100);
+  }
+
+  void checkAndRequestPermissions();
+}
+
+    </script>
+</body>
+
+</html>
