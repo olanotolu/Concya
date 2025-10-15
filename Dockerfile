@@ -26,16 +26,22 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Copy application code
 COPY app.py .
-COPY index.html .
+COPY metrics.py .
+COPY twilio_integration.py .
 
 # Environment variables (can be overridden in RunPod)
+# SECURITY: Set these in RunPod environment, NOT here!
 ENV WHISPER_MODEL=base
 ENV WHISPER_LANGUAGE=auto
 ENV ENABLE_DIARIZATION=true
-ENV TARGET_LANGUAGE="en"
-ENV OPENAI_API_KEY="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"
-ENV SUPABASE_URL="https://mqtqnpnfnqddflntoklc.supabase.co"
-ENV SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xdHFucG5mbnFkZGZsbnRva2xjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzOTM1NDksImV4cCI6MjA2ODk2OTU0OX0.4n464jSInFvADSIktGO3rw1xIEhzKud1wjtxVruultU"
+ENV TARGET_LANGUAGE=""
+ENV OPENAI_API_KEY=""
+ENV SUPABASE_URL=""
+ENV SUPABASE_ANON_KEY=""
+ENV TWILIO_ACCOUNT_SID=""
+ENV TWILIO_AUTH_TOKEN=""
+ENV TWILIO_PHONE_NUMBER=""
+ENV PUBLIC_WEBHOOK_URL=""
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000

@@ -263,22 +263,68 @@ app.add_middleware(
 
 @app.get("/")
 async def get():
-    """Serve the frontend web UI"""
-    index_path = Path(__file__).parent / "index.html"
-    if index_path.exists():
-        return HTMLResponse(index_path.read_text())
-    else:
-        return HTMLResponse("""
-        <html>
-            <head><title>Concya - AI Reservation Assistant</title></head>
-            <body>
-                <h1>Concya is running!</h1>
-                <p>WebSocket endpoint: <code>/asr</code></p>
-                <p>LLM endpoint: <code>/conversation</code></p>
-                <p>TTS endpoint: <code>/speak</code></p>
-            </body>
-        </html>
-        """)
+    """API information and Twilio setup instructions"""
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+        <head>
+            <title>Concya - AI Voice Reservation Assistant</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
+                       max-width: 800px; margin: 50px auto; padding: 20px; line-height: 1.6; }
+                h1 { color: #667eea; }
+                h2 { color: #764ba2; margin-top: 30px; }
+                code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+                .endpoint { background: #e8f4f8; padding: 15px; margin: 10px 0; border-radius: 5px; }
+                .status { color: #28a745; font-weight: bold; }
+                a { color: #667eea; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>🎙️ Concya - AI Voice Reservation Assistant</h1>
+            <p class="status">✅ Server is running!</p>
+            
+            <h2>📞 Twilio Voice Integration</h2>
+            <p>Concya supports phone-based reservations via Twilio Voice.</p>
+            
+            <div class="endpoint">
+                <strong>Twilio Webhook:</strong><br>
+                <code>POST /twilio/voice</code> - Incoming call handler (TwiML)<br>
+                <code>WS /twilio/stream</code> - Media Stream WebSocket<br>
+                <code>POST /twilio/status</code> - Call status callbacks<br>
+                <code>GET /twilio/health</code> - Health check
+            </div>
+            
+            <h2>🔌 API Endpoints</h2>
+            <div class="endpoint">
+                <strong>STT:</strong> <code>WS /asr</code> - Real-time speech-to-text<br>
+                <strong>LLM:</strong> <code>POST /conversation</code> - AI conversation<br>
+                <strong>TTS:</strong> <code>POST /speak</code> - Text-to-speech<br>
+                <strong>Metrics:</strong> <code>GET /metrics</code> - Prometheus metrics<br>
+                <strong>Health:</strong> <code>GET /health</code> - System health check
+            </div>
+            
+            <h2>📋 Setup Instructions</h2>
+            <ol>
+                <li>Configure environment variables (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, etc.)</li>
+                <li>Set Twilio webhook to: <code>https://your-url.com/twilio/voice</code></li>
+                <li>Call your Twilio number to test</li>
+            </ol>
+            
+            <p>📖 See <a href="https://github.com/olanotolu/Concya/blob/master/TWILIO_SETUP.md">TWILIO_SETUP.md</a> for detailed instructions</p>
+            
+            <h2>🎯 Usage</h2>
+            <p><strong>Terminal Client:</strong> Use <code>stt/client.py</code> for local testing</p>
+            <p><strong>Phone Calls:</strong> Call your Twilio number and speak naturally</p>
+            <p><strong>Web UI:</strong> Legacy interface archived in <code>archive/index.html</code></p>
+            
+            <p style="margin-top: 40px; color: #666; font-size: 14px;">
+                Powered by WhisperLiveKit (STT) + OpenAI GPT-4o-mini (LLM) + OpenAI TTS-1
+            </p>
+        </body>
+    </html>
+    """)
 
 @app.get("/health")
 async def health():
