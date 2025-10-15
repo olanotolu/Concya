@@ -15,91 +15,28 @@ import time
 import json
 import traceback
 from pathlib import Path
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+# Import metrics from centralized metrics module
+from metrics import (
+    # STT metrics
+    stt_latency_ms, stt_audio_duration_seconds, stt_rtf,
+    stt_requests_total, stt_errors_total,
+    # WebSocket metrics
+    websocket_connections_active, websocket_messages_received, websocket_messages_sent,
+    # LLM metrics
+    llm_latency_ms, llm_requests_total, llm_errors_total,
+    llm_tokens_prompt, llm_tokens_completion,
+    # TTS metrics
+    tts_latency_ms, tts_audio_bytes, tts_requests_total, tts_errors_total,
+    # Reservation metrics
+    reservations_created_total, reservations_cancelled_total, reservations_active
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logging.getLogger().setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-# ═══════════════════════════════════════════════════════════════
-# PROMETHEUS METRICS - Unified (STT + LLM + TTS)
-# ═══════════════════════════════════════════════════════════════
-
-# STT Metrics
-stt_latency_ms = Histogram(
-    'stt_latency_ms',
-    'STT transcription latency in milliseconds',
-    buckets=[10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
-)
-
-stt_audio_duration_seconds = Histogram(
-    'stt_audio_duration_seconds',
-    'Duration of audio processed in seconds',
-    buckets=[0.5, 1, 2, 5, 10, 30, 60, 120, 300]
-)
-
-stt_rtf = Histogram(
-    'stt_rtf',
-    'STT Real-Time Factor (processing_time / audio_duration)',
-    buckets=[0.1, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0]
-)
-
-stt_requests_total = Counter('stt_requests_total', 'Total STT requests')
-stt_errors_total = Counter('stt_errors_total', 'Total STT errors')
-
-websocket_connections_active = Gauge('websocket_connections_active', 'Active WebSocket connections')
-websocket_messages_received = Counter('websocket_messages_received', 'Total WebSocket messages received')
-websocket_messages_sent = Counter('websocket_messages_sent', 'Total WebSocket messages sent')
-
-# LLM Metrics
-llm_latency_ms = Histogram(
-    'llm_latency_ms',
-    'LLM response generation latency in milliseconds',
-    buckets=[50, 100, 250, 500, 750, 1000, 1500, 2000, 3000, 5000, 10000]
-)
-
-llm_tokens_used = Histogram(
-    'llm_tokens_used',
-    'Total tokens used per LLM request',
-    buckets=[10, 50, 100, 200, 500, 1000, 2000, 4000]
-)
-
-llm_prompt_tokens = Histogram(
-    'llm_prompt_tokens',
-    'Prompt tokens per LLM request',
-    buckets=[10, 50, 100, 200, 500, 1000, 2000]
-)
-
-llm_completion_tokens = Histogram(
-    'llm_completion_tokens',
-    'Completion tokens per LLM request',
-    buckets=[5, 20, 50, 100, 200, 500, 1000]
-)
-
-llm_requests_total = Counter('llm_requests_total', 'Total LLM requests')
-llm_errors_total = Counter('llm_errors_total', 'Total LLM errors')
-
-# TTS Metrics
-tts_latency_ms = Histogram(
-    'tts_latency_ms',
-    'TTS audio generation latency in milliseconds',
-    buckets=[100, 250, 500, 1000, 1500, 2000, 3000, 5000, 10000]
-)
-
-tts_audio_bytes = Histogram(
-    'tts_audio_bytes',
-    'TTS audio size in bytes',
-    buckets=[1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000]
-)
-
-tts_requests_total = Counter('tts_requests_total', 'Total TTS requests')
-tts_errors_total = Counter('tts_errors_total', 'Total TTS errors')
-
-# Conversation & Reservation Metrics
-active_conversations = Gauge('active_conversations', 'Number of active conversation sessions')
-reservations_created_total = Counter('reservations_created_total', 'Total reservations created')
-reservations_cancelled_total = Counter('reservations_cancelled_total', 'Total reservations cancelled')
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -378,7 +315,6 @@ async def conversation(request: ConversationRequest):
     # Initialize conversation with welcome message if new
     if request.session_id not in conversations:
         conversations[request.session_id] = []
-        active_conversations.inc()
         logger.info(f"🆕 [LLM] New conversation: {request.session_id[:16]}...")
 
         # Add welcome message from assistant
@@ -418,9 +354,8 @@ async def conversation(request: ConversationRequest):
         # Track token usage
         usage = response.usage
         if usage:
-            llm_tokens_used.observe(usage.total_tokens)
-            llm_prompt_tokens.observe(usage.prompt_tokens)
-            llm_completion_tokens.observe(usage.completion_tokens)
+            llm_tokens_prompt.observe(usage.prompt_tokens)
+            llm_tokens_completion.observe(usage.completion_tokens)
             
             logger.info(f"✅ [LLM] Response in {llm_duration_ms:.0f}ms | Tokens: {usage.total_tokens} (prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens})")
         else:
@@ -618,7 +553,6 @@ async def clear_session(request: Request):
     if session_id in conversations:
         message_count = len(conversations[session_id])
         del conversations[session_id]
-        active_conversations.dec()
         logger.info(f"🗑️  [SESSION] Cleared: {session_id[:16]}... ({message_count} messages)")
     else:
         logger.debug(f"🗑️  [SESSION] Clear requested for non-existent session: {session_id[:16]}...")
