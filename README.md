@@ -202,9 +202,7 @@ Concya/
 ├── Dockerfile                  # Docker image
 ├── build-and-push.sh          # Build script
 ├── README.md                   # This file
-├── RUNPOD_DEPLOYMENT.md       # Deployment guide
-├── stt/                        # (legacy - backup)
-└── llm/                        # (legacy - backup)
+└── RUNPOD_DEPLOYMENT.md       # Deployment guide
 ```
 
 ## Troubleshooting
