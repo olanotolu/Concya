@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from whisperlivekit import TranscriptionEngine, AudioProcessor
@@ -13,6 +13,7 @@ import logging
 import os
 import time
 import json
+import traceback
 from pathlib import Path
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
@@ -465,46 +466,58 @@ async def conversation(request: ConversationRequest):
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/speak")
-async def speak(request: TTSRequest):
-    """Generate speech audio (TTS)"""
-    
+async def speak(req: dict):
+    """Generate speech audio from text."""
+
     tts_requests_total.inc()
     start_time = time.time()
-    
-    text_preview = request.text[:80] + "..." if len(request.text) > 80 else request.text
-    logger.info(f"🔊 [TTS] Generating audio for: '{text_preview}' | Voice: {request.voice}")
-    
+
+    text = req.get("text", "")
+    voice = req.get("voice", "alloy")
+
+    if not text.strip():
+        logger.warning("⚠️  [TTS] Empty text input")
+        return JSONResponse(status_code=400, content={"error": "Empty text input"})
+
+    text_preview = text[:80] + "..." if len(text) > 80 else text
+    logger.info(f"🔊 [TTS] Generating audio for: '{text_preview}' | Voice: {voice}")
+
     try:
-        tts_start = time.time()
-        
-        response = client.audio.speech.create(
+        tts_start = time.perf_counter()
+
+        speech = client.audio.speech.create(
             model="tts-1",
-            voice=request.voice,
-            input=request.text,
+            voice=voice,
+            input=text,
             speed=1.1
         )
-        
-        tts_duration_ms = (time.time() - tts_start) * 1000
+
+        audio_data = speech.read()
+
+        tts_duration_ms = (time.perf_counter() - tts_start) * 1000
         tts_latency_ms.observe(tts_duration_ms)
-        
-        audio_size = len(response.content)
+
+        audio_size = len(audio_data)
         tts_audio_bytes.observe(audio_size)
-        
+
         audio_size_kb = audio_size / 1024
-        char_count = len(request.text)
-        logger.info(f"✅ [TTS] Generated {audio_size_kb:.1f} KB in {tts_duration_ms:.0f}ms ({char_count} chars → {audio_size_kb/char_count:.2f} KB/char)")
-        
-        total_duration_ms = (time.time() - start_time) * 1000
-        logger.info(f"⏱️  [TTS] Total speak endpoint latency: {total_duration_ms:.0f}ms")
-        
-        return Response(content=response.content, media_type="audio/mpeg")
-        
+        char_count = len(text)
+        logger.info(f"✅ [TTS] Generated {audio_size_kb:.1f} KB in {tts_duration_ms:.1f}ms ({char_count} chars → {audio_size_kb/char_count:.2f} KB/char)")
+
+        total_duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(f"⏱️  [TTS] Total speak endpoint latency: {total_duration_ms:.1f}ms")
+
+        return Response(content=audio_data, media_type="audio/mpeg")
+
     except Exception as e:
         tts_errors_total.inc()
-        error_duration_ms = (time.time() - start_time) * 1000
-        logger.error(f"❌ [TTS] Error after {error_duration_ms:.0f}ms: {str(e)}")
+        error_duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.error(f"❌ [TTS] Error after {error_duration_ms:.1f}ms: {str(e)}")
         logger.exception(e)
-        return Response(content=b"", media_type="audio/mpeg", status_code=500)
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "trace": traceback.format_exc()},
+        )
 
 # ═══════════════════════════════════════════════════════════════
 # ROUTES - Reservations
