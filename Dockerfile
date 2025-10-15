@@ -16,9 +16,8 @@ RUN apt-get update && \
 
 # Python dependencies (install prerequisites first for sox compatibility)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir numpy typing_extensions && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
 
 # Note: Whisper model will be downloaded automatically on first startup
 # This avoids build-time authentication issues
@@ -33,6 +32,8 @@ ENV WHISPER_LANGUAGE=auto
 ENV ENABLE_DIARIZATION=true
 ENV TARGET_LANGUAGE=""
 ENV OPENAI_API_KEY=""
+ENV SUPABASE_URL=""
+ENV SUPABASE_ANON_KEY=""
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
