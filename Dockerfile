@@ -17,6 +17,7 @@ RUN apt-get update && \
 # Python dependencies (install prerequisites first for sox compatibility)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir numpy \
  && pip install --no-cache-dir -r requirements.txt
 
 # Note: Whisper model will be downloaded automatically on first startup
