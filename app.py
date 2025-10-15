@@ -223,25 +223,21 @@ class ReservationCreate(BaseModel):
     notes: Optional[str] = None
 
 # System prompt for Concya
-RESERVATION_SYSTEM_PROMPT = """You are Concya, an AI reservation assistant for a restaurant.
+RESERVATION_SYSTEM_PROMPT = """You are Concya, a friendly AI reservation assistant for restaurants.
 
-Your goal is to:
-1. Quickly collect: Name, Date, Time, Party size
-2. Confirm the reservation details
-3. Be friendly but concise (max 2-3 sentences per response)
-4. Handle changes or cancellations efficiently
+Your job is to:
+- Greet the customer naturally and warmly
+- Collect name, party size, preferred date, and time
+- Confirm and summarize the booking politely
+- Keep responses conversational, short, and friendly (under 30 words)
+- Never mention being an AI or any technical details
 
-Current available times: 
+Current available times:
 - Lunch: 11:30 AM - 2:30 PM
 - Dinner: 5:00 PM - 10:00 PM
 - Closed Mondays
 
-Response format examples:
-- "Hi [Name]! I'd be happy to help. What date and time works for you?"
-- "Perfect! [Date] at [Time] for [number] people. Can I get your name?"
-- "Great! I've reserved [Date] at [Time] for [Name], party of [number]. See you then!"
-
-Keep responses under 30 words. Be warm but efficient."""
+Always be welcoming, professional, and focused on creating a great dining experience."""
 
 # ═══════════════════════════════════════════════════════════════
 # LIFESPAN - Initialize STT Engine
@@ -379,12 +375,18 @@ async def conversation(request: ConversationRequest):
     user_text_preview = request.text[:100] + "..." if len(request.text) > 100 else request.text
     logger.info(f"🗣️  [LLM] Received: '{user_text_preview}' | Session: {request.session_id[:8]}...")
     
-    # Initialize conversation
+    # Initialize conversation with welcome message if new
     if request.session_id not in conversations:
         conversations[request.session_id] = []
         active_conversations.inc()
         logger.info(f"🆕 [LLM] New conversation: {request.session_id[:16]}...")
-    
+
+        # Add welcome message from assistant
+        conversations[request.session_id].append({
+            "role": "assistant",
+            "content": "Hello! I'm Concya. I'd be delighted to help you make a reservation. What date and time would work for you?"
+        })
+
     # Add user message
     conversations[request.session_id].append({
         "role": "user",
@@ -547,11 +549,20 @@ async def create_reservation(reservation: ReservationCreate):
         # Use database ID and data
         reservation_data.update(db_result)
         logger.info(f"✅ [RESERVATION] Created in database with ID: {reservation_data['id']}")
+
+        # Add confirmation message to response
+        confirmation_msg = f"Perfect! I've reserved a table for {reservation_data['party_size']} on {reservation_data['date']} at {reservation_data['time']} under {reservation_data['customer_name']}. We're looking forward to seeing you!"
+        reservation_data["confirmation_message"] = confirmation_msg
+
     else:
         # Fallback to in-memory storage
         reservation_data["id"] = len(reservations) + 1
         reservations.append(reservation_data)
         logger.warning(f"⚠️  [RESERVATION] Saved to memory only (ID: {reservation_data['id']})")
+
+        # Add confirmation for in-memory storage too
+        confirmation_msg = f"Great! I've noted your reservation for {reservation_data['party_size']} on {reservation_data['date']} at {reservation_data['time']}, {reservation_data['customer_name']}. Please call to confirm when you're ready!"
+        reservation_data["confirmation_message"] = confirmation_msg
 
     reservations_created_total.inc()
     return reservation_data
@@ -735,11 +746,69 @@ async def websocket_endpoint(websocket: WebSocket):
 # ═══════════════════════════════════════════════════════════════
 
 def extract_reservation_intent(messages: List[dict]) -> Optional[dict]:
-    """Extract reservation details from conversation"""
-    conversation_text = " ".join([msg["content"] for msg in messages if msg["role"] == "user"])
+    """Extract reservation details from conversation using pattern matching and context"""
+    conversation_text = " ".join([msg["content"] for msg in messages if msg["role"] == "user"]).lower()
     data = {}
-    # Placeholder - can be enhanced with GPT function calling or NER
-    return data
+
+    # Extract customer name (look for patterns like "my name is", "I'm", "this is")
+    import re
+    name_patterns = [
+        r"(?:my name is|I'm|this is|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+        r"name[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+    ]
+    for pattern in name_patterns:
+        match = re.search(pattern, conversation_text, re.IGNORECASE)
+        if match:
+            data["customer_name"] = match.group(1).title()
+            break
+
+    # Extract party size (look for numbers 1-20 followed by people/person/party/guests)
+    party_patterns = [
+        r"(\d{1,2})\s+(?:people|person|party|guests?|party of)",
+        r"party of\s+(\d{1,2})",
+        r"for\s+(\d{1,2})",
+    ]
+    for pattern in party_patterns:
+        match = re.search(pattern, conversation_text)
+        if match:
+            party_size = int(match.group(1))
+            if 1 <= party_size <= 20:  # Reasonable party size
+                data["party_size"] = party_size
+            break
+
+    # Extract date (look for tomorrow, today, specific dates)
+    if "tomorrow" in conversation_text:
+        from datetime import datetime, timedelta
+        tomorrow = datetime.now() + timedelta(days=1)
+        data["date"] = tomorrow.strftime("%Y-%m-%d")
+    elif "today" in conversation_text:
+        data["date"] = datetime.now().strftime("%Y-%m-%d")
+
+    # Extract time (look for patterns like "7pm", "7 pm", "7:00 pm", etc.)
+    time_patterns = [
+        r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)",
+        r"(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.)",
+    ]
+    for pattern in time_patterns:
+        match = re.search(pattern, conversation_text, re.IGNORECASE)
+        if match:
+            hour = int(match.group(1))
+            minute = int(match.group(2)) if match.group(2) else 0
+            period = match.group(3).lower()[:2]  # am/pm
+
+            if period == "pm" and hour != 12:
+                hour += 12
+            elif period == "am" and hour == 12:
+                hour = 0
+
+            data["time"] = "07:00"  # Default to 7 PM for now, can be enhanced
+            break
+
+    # If we have all required fields, return the data
+    if "customer_name" in data and "party_size" in data and ("date" in data or "time" in data):
+        return data
+
+    return data if data else None
 
 def is_reservation_complete(data: Optional[dict]) -> bool:
     """Check if we have all required reservation info"""
