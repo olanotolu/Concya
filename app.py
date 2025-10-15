@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from whisperlivekit import TranscriptionEngine, AudioProcessor
 from openai import OpenAI
+from supabase import create_client, Client
 from typing import Dict, List, Optional
 from datetime import datetime
 import asyncio
@@ -109,6 +110,11 @@ LANGUAGE = os.getenv("WHISPER_LANGUAGE", "auto")
 DIARIZATION = os.getenv("ENABLE_DIARIZATION", "true").lower() == "true"
 TARGET_LANGUAGE = os.getenv("TARGET_LANGUAGE", "")
 
+# Supabase Configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+supabase: Client = None
+
 logger.info(f"🚀 Starting Concya - Unified STT + LLM + TTS Service")
 logger.info(f"📦 Whisper Model: {MODEL}")
 logger.info(f"🌍 Language: {LANGUAGE}")
@@ -125,6 +131,74 @@ reservations: List[dict] = []
 
 # Global transcription engine
 transcription_engine = None
+
+# ═══════════════════════════════════════════════════════════════
+# DATABASE HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+async def create_reservations_table():
+    """Create reservations table in Supabase if it doesn't exist"""
+    if not supabase:
+        return
+
+    try:
+        # Check if table exists by trying to select from it
+        result = supabase.table('reservations').select('id').limit(1).execute()
+        logger.info("✅ Reservations table already exists")
+    except Exception:
+        # Table doesn't exist, create it
+        logger.info("📝 Creating reservations table...")
+
+        # Note: In a production environment, you'd typically create the table
+        # through Supabase dashboard or migrations. For simplicity, we'll
+        # rely on the table being created manually or through direct SQL.
+
+        logger.warning("⚠️  Please create the 'reservations' table in your Supabase dashboard with the following schema:")
+        logger.warning("   - id: integer (primary key, auto-increment)")
+        logger.warning("   - customer_name: text")
+        logger.warning("   - date: text")
+        logger.warning("   - time: text")
+        logger.warning("   - party_size: integer")
+        logger.warning("   - phone: text (nullable)")
+        logger.warning("   - notes: text (nullable)")
+        logger.warning("   - created_at: timestamp with time zone")
+        logger.warning("   - status: text (default: 'confirmed')")
+
+async def save_reservation_to_db(reservation_data: dict):
+    """Save reservation to Supabase database"""
+    if not supabase:
+        return None
+
+    try:
+        result = supabase.table('reservations').insert(reservation_data).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"❌ Failed to save reservation to database: {e}")
+        return None
+
+async def get_reservations_from_db():
+    """Get all reservations from Supabase database"""
+    if not supabase:
+        return []
+
+    try:
+        result = supabase.table('reservations').select('*').execute()
+        return result.data
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch reservations from database: {e}")
+        return []
+
+async def update_reservation_status(reservation_id: int, status: str):
+    """Update reservation status in Supabase database"""
+    if not supabase:
+        return False
+
+    try:
+        result = supabase.table('reservations').update({'status': status}).eq('id', reservation_id).execute()
+        return len(result.data) > 0
+    except Exception as e:
+        logger.error(f"❌ Failed to update reservation status: {e}")
+        return False
 
 # ═══════════════════════════════════════════════════════════════
 # PYDANTIC MODELS
@@ -210,6 +284,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Failed to initialize TranscriptionEngine: {e}")
         raise e
+
+    # Initialize Supabase
+    global supabase
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+            logger.info("✅ Supabase client initialized!")
+
+            # Initialize database schema
+            await create_reservations_table()
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Supabase: {e}")
+            supabase = None
+    else:
+        logger.warning("⚠️  Supabase credentials not provided - reservations will be stored in-memory only")
+        supabase = None
 
     yield
     logger.info("🔌 Shutting down...")
@@ -423,11 +513,11 @@ async def speak(request: TTSRequest):
 @app.post("/reservations")
 async def create_reservation(reservation: ReservationCreate):
     """Create a new reservation"""
-    
+
     logger.info(f"📝 [RESERVATION] Creating: {reservation.customer_name} on {reservation.date} at {reservation.time} (party of {reservation.party_size})")
-    
+
+    # Prepare reservation data for database
     reservation_data = {
-        "id": len(reservations) + 1,
         "customer_name": reservation.customer_name,
         "date": reservation.date,
         "time": reservation.time,
@@ -437,33 +527,61 @@ async def create_reservation(reservation: ReservationCreate):
         "created_at": datetime.now().isoformat(),
         "status": "confirmed"
     }
-    
-    reservations.append(reservation_data)
+
+    # Try to save to database first
+    db_result = await save_reservation_to_db(reservation_data)
+    if db_result:
+        # Use database ID and data
+        reservation_data.update(db_result)
+        logger.info(f"✅ [RESERVATION] Created in database with ID: {reservation_data['id']}")
+    else:
+        # Fallback to in-memory storage
+        reservation_data["id"] = len(reservations) + 1
+        reservations.append(reservation_data)
+        logger.warning(f"⚠️  [RESERVATION] Saved to memory only (ID: {reservation_data['id']})")
+
     reservations_created_total.inc()
-    
-    logger.info(f"✅ [RESERVATION] Created ID: {reservation_data['id']}")
-    
     return reservation_data
 
 @app.get("/reservations")
 async def list_reservations():
     """Get all reservations"""
-    return {
-        "total": len(reservations),
-        "reservations": reservations
-    }
+
+    # Try to fetch from database first
+    db_reservations = await get_reservations_from_db()
+    if db_reservations:
+        return {
+            "total": len(db_reservations),
+            "reservations": db_reservations,
+            "source": "database"
+        }
+    else:
+        # Fallback to in-memory storage
+        return {
+            "total": len(reservations),
+            "reservations": reservations,
+            "source": "memory"
+        }
 
 @app.delete("/reservations/{reservation_id}")
 async def cancel_reservation(reservation_id: int):
     """Cancel a reservation"""
-    
+
+    # Try to update in database first
+    db_success = await update_reservation_status(reservation_id, "cancelled")
+    if db_success:
+        reservations_cancelled_total.inc()
+        logger.info(f"❌ [RESERVATION] Cancelled in database - ID: {reservation_id}")
+        return {"message": "Reservation cancelled", "id": reservation_id}
+
+    # Fallback to in-memory storage
     for res in reservations:
         if res["id"] == reservation_id:
             res["status"] = "cancelled"
             reservations_cancelled_total.inc()
-            logger.info(f"❌ [RESERVATION] Cancelled ID: {reservation_id} ({res['customer_name']} on {res['date']})")
+            logger.info(f"❌ [RESERVATION] Cancelled in memory - ID: {reservation_id} ({res['customer_name']} on {res['date']})")
             return {"message": "Reservation cancelled", "reservation": res}
-    
+
     logger.warning(f"⚠️  [RESERVATION] Cancellation failed: ID {reservation_id} not found")
     raise HTTPException(status_code=404, detail="Reservation not found")
 

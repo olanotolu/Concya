@@ -110,12 +110,45 @@ Environment variables:
 # Required
 OPENAI_API_KEY=sk-...           # Your OpenAI API key
 
-# Optional
+# Optional - STT
 WHISPER_MODEL=base              # Whisper model size (tiny, base, small, medium, large)
 WHISPER_LANGUAGE=auto           # Language code (auto, en, fr, es, etc.)
 ENABLE_DIARIZATION=true         # Speaker diarization on/off
 TARGET_LANGUAGE=                # Translation target (e.g., "fr", "es")
+
+# Optional - Database (Supabase)
+SUPABASE_URL=https://your-project.supabase.co  # Your Supabase project URL
+SUPABASE_ANON_KEY=your-anon-key                # Your Supabase anon key
 ```
+
+### Database Setup (Supabase)
+
+Concya supports persistent storage of reservations using Supabase:
+
+1. **Create a Supabase project** at [supabase.com](https://supabase.com)
+2. **Create a table** called `reservations` with the following schema:
+
+```sql
+CREATE TABLE reservations (
+  id SERIAL PRIMARY KEY,
+  customer_name TEXT NOT NULL,
+  date TEXT NOT NULL,
+  time TEXT NOT NULL,
+  party_size INTEGER NOT NULL,
+  phone TEXT,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  status TEXT DEFAULT 'confirmed'
+);
+```
+
+3. **Get your credentials** from the Supabase dashboard:
+   - Project URL: Settings → API → Project URL
+   - Anon Key: Settings → API → Project API keys → anon public
+
+4. **Set environment variables** as shown above
+
+**Note:** If Supabase is not configured, reservations will be stored in-memory only (lost on restart).
 
 ## Metrics
 
