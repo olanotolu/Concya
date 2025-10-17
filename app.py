@@ -6,15 +6,20 @@ from pydantic import BaseModel
 from whisperlivekit import TranscriptionEngine, AudioProcessor
 from openai import OpenAI
 from supabase import create_client, Client
-from typing import Dict, List, Optional
-from datetime import datetime
+from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
 import asyncio
 import logging
 import os
 import time
 import json
+import re
 import traceback
 from pathlib import Path
+try:
+    from dateparser.search import search_dates
+except ImportError:  # pragma: no cover - optional dependency
+    search_dates = None  # type: ignore[assignment]
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 # Import metrics from centralized metrics module
@@ -37,6 +42,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logging.getLogger().setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+if search_dates is None:
+    logger.warning(
+        "⚠️  dateparser is not installed. Reservation date parsing will fall back to basic heuristics."
+    )
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -74,33 +84,60 @@ transcription_engine = None
 # DATABASE HELPERS
 # ═══════════════════════════════════════════════════════════════
 
+REQUIRED_RESERVATION_COLUMNS = [
+    "id",
+    "customer_name",
+    "date",
+    "time",
+    "party_size",
+    "phone",
+    "notes",
+    "created_at",
+    "status",
+]
+
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+RESERVATION_MIGRATION_FILE = MIGRATIONS_DIR / "001_create_reservations_table.sql"
+
+
+def _log_reservation_migration_hint(reason: str) -> None:
+    """Surface actionable instructions when schema checks fail."""
+    logger.warning("⚠️  %s", reason)
+
+    if RESERVATION_MIGRATION_FILE.exists():
+        migration_sql = RESERVATION_MIGRATION_FILE.read_text().strip()
+        logger.warning("   └─ Run the SQL migration at %s to create/update the table:", RESERVATION_MIGRATION_FILE)
+        for line in migration_sql.splitlines():
+            logger.warning("      %s", line)
+    else:
+        logger.warning(
+            "   └─ Expected migration file missing at %s. Please create the reservations table manually.",
+            RESERVATION_MIGRATION_FILE,
+        )
+
+
 async def create_reservations_table():
-    """Create reservations table in Supabase if it doesn't exist"""
+    """Ensure the reservations table exists and matches expected columns."""
     if not supabase:
         return
 
     try:
         # Check if table exists by trying to select from it
-        result = supabase.table('reservations').select('id').limit(1).execute()
-        logger.info("✅ Reservations table already exists")
-    except Exception:
-        # Table doesn't exist, create it
-        logger.info("📝 Creating reservations table...")
+        supabase.table("reservations").select("id").limit(1).execute()
+        logger.info("✅ Reservations table detected")
+    except Exception as e:
+        _log_reservation_migration_hint(
+            "Reservations table not found or inaccessible in Supabase (error: %s)." % e
+        )
+        return
 
-        # Note: In a production environment, you'd typically create the table
-        # through Supabase dashboard or migrations. For simplicity, we'll
-        # rely on the table being created manually or through direct SQL.
-
-        logger.warning("⚠️  Please create the 'reservations' table in your Supabase dashboard with the following schema:")
-        logger.warning("   - id: integer (primary key, auto-increment)")
-        logger.warning("   - customer_name: text")
-        logger.warning("   - date: text")
-        logger.warning("   - time: text")
-        logger.warning("   - party_size: integer")
-        logger.warning("   - phone: text (nullable)")
-        logger.warning("   - notes: text (nullable)")
-        logger.warning("   - created_at: timestamp with time zone")
-        logger.warning("   - status: text (default: 'confirmed')")
+    try:
+        supabase.table("reservations").select(",".join(REQUIRED_RESERVATION_COLUMNS)).limit(1).execute()
+        logger.info("✅ Reservations table schema validated")
+    except Exception as e:
+        _log_reservation_migration_hint(
+            "Reservations table schema check failed (missing columns or permissions). Error: %s" % e
+        )
 
 async def save_reservation_to_db(reservation_data: dict):
     """Save reservation to Supabase database"""
@@ -725,70 +762,258 @@ async def websocket_endpoint(websocket: WebSocket):
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════
 
+NAME_PATTERNS = [
+    re.compile(r"(?:my name is|i am|i'm called|this is|you're speaking with)\s+(?P<name>[A-Za-z][A-Za-z\-']*(?:\s+[A-Za-z][A-Za-z\-']*){0,2})", re.IGNORECASE),
+    re.compile(r"name[:\s]+(?P<name>[A-Za-z][A-Za-z\-']*(?:\s+[A-Za-z][A-Za-z\-']*){0,2})", re.IGNORECASE),
+]
+
+PARTY_PATTERNS = [
+    re.compile(r"(?:party of|for|table for|seating for)\s+(?P<count>\d{1,2}|[a-z\-]+)", re.IGNORECASE),
+    re.compile(r"(?P<count>\d{1,2})\s+(?:people|persons?|guests?|heads|adults)", re.IGNORECASE),
+]
+
+NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "couple": 2,
+    "both": 2,
+    "pair": 2,
+}
+
+DATE_HINT_PATTERN = re.compile(
+    r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|today|tonight|tomorrow|next|this|am|pm|noon|midnight|evening|morning)\b",
+    re.IGNORECASE,
+)
+
+TIME_HINT_PATTERN = re.compile(r"\b(?:am|pm|a\.m\.|p\.m\.|o'clock|noon|midnight)\b", re.IGNORECASE)
+
+PHONE_PATTERN = re.compile(r"(?:\+?\d[\d\s\-()]{6,}\d)")
+
+NOTES_KEYWORDS = [
+    "anniversary",
+    "birthday",
+    "wheelchair",
+    "allerg",
+    "gluten",
+    "peanut",
+    "quiet",
+    "window",
+    "booth",
+    "high chair",
+    "baby",
+    "kids",
+    "celebrat",
+]
+
+TIME_PATTERNS = [
+    re.compile(
+        r"(?:at\s*)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<period>am|pm|a\.m\.|p\.m\.)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?:at\s*)?(?P<hour>\d{1,2}):(?P<minute>\d{2})"),
+]
+
+
+def _normalize_name(raw_name: str) -> str:
+    parts = [part for part in re.split(r"\s+", raw_name) if part]
+    return " ".join(part.capitalize() for part in parts)
+
+
+def _extract_notes_from_text(full_text: str) -> Optional[str]:
+    sentences = re.split(r"(?<=[.!?])\s+", full_text)
+    relevant_sentences = []
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if any(keyword in lowered for keyword in NOTES_KEYWORDS):
+            relevant_sentences.append(sentence.strip())
+    if not relevant_sentences:
+        return None
+    # Preserve order while removing duplicates
+    seen = []
+    for sentence in relevant_sentences:
+        if sentence not in seen:
+            seen.append(sentence)
+    return " ".join(seen)
+
+
+def _normalize_phone(raw_phone: str) -> Optional[str]:
+    digits = re.sub(r"\D", "", raw_phone)
+    if len(digits) < 7:
+        return None
+    if raw_phone.strip().startswith("+"):
+        return "+" + digits
+    return digits
+
+
 def extract_reservation_intent(messages: List[dict]) -> Optional[dict]:
-    """Extract reservation details from conversation using pattern matching and context"""
-    conversation_text = " ".join([msg["content"] for msg in messages if msg["role"] == "user"]).lower()
-    data = {}
+    """Extract reservation details from conversation using richer heuristics."""
 
-    # Extract customer name (look for patterns like "my name is", "I'm", "this is")
-    import re
-    name_patterns = [
-        r"(?:my name is|I'm|this is|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-        r"name[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-    ]
-    for pattern in name_patterns:
-        match = re.search(pattern, conversation_text, re.IGNORECASE)
-        if match:
-            data["customer_name"] = match.group(1).title()
+    user_messages = [msg["content"] for msg in messages if msg["role"] == "user"]
+    if not user_messages:
+        return None
+
+    combined_text = " ".join(user_messages)
+    combined_lower = combined_text.lower()
+    data: Dict[str, Any] = {}
+
+    # Extract customer name (prefer the latest mention)
+    for message in reversed(user_messages):
+        for pattern in NAME_PATTERNS:
+            match = pattern.search(message)
+            if match:
+                normalized_name = _normalize_name(match.group("name"))
+                if normalized_name:
+                    data["customer_name"] = normalized_name
+                    break
+        if "customer_name" in data:
             break
 
-    # Extract party size (look for numbers 1-20 followed by people/person/party/guests)
-    party_patterns = [
-        r"(\d{1,2})\s+(?:people|person|party|guests?|party of)",
-        r"party of\s+(\d{1,2})",
-        r"for\s+(\d{1,2})",
-    ]
-    for pattern in party_patterns:
-        match = re.search(pattern, conversation_text)
-        if match:
-            party_size = int(match.group(1))
-            if 1 <= party_size <= 20:  # Reasonable party size
+    # Extract party size, supporting both numeric digits and words
+    for message in reversed(user_messages):
+        for pattern in PARTY_PATTERNS:
+            match = pattern.search(message)
+            if not match:
+                continue
+
+            count_raw = match.group("count")
+            party_size: Optional[int] = None
+            if count_raw.isdigit():
+                party_size = int(count_raw)
+            else:
+                count_key = count_raw.lower().strip()
+                party_size = NUMBER_WORDS.get(count_key)
+
+            if party_size is None and "just me" in message.lower():
+                party_size = 1
+
+            if party_size and 1 <= party_size <= 20:
                 data["party_size"] = party_size
+                break
+        if "party_size" in data:
             break
 
-    # Extract date (look for tomorrow, today, specific dates)
-    if "tomorrow" in conversation_text:
-        from datetime import datetime, timedelta
-        tomorrow = datetime.now() + timedelta(days=1)
-        data["date"] = tomorrow.strftime("%Y-%m-%d")
-    elif "today" in conversation_text:
-        data["date"] = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
 
-    # Extract time (look for patterns like "7pm", "7 pm", "7:00 pm", etc.)
-    time_patterns = [
-        r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)",
-        r"(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.)",
-    ]
-    for pattern in time_patterns:
-        match = re.search(pattern, conversation_text, re.IGNORECASE)
-        if match:
-            hour = int(match.group(1))
-            minute = int(match.group(2)) if match.group(2) else 0
-            period = match.group(3).lower()[:2]  # am/pm
+    if "tomorrow" in combined_lower and "date" not in data:
+        data["date"] = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    elif any(keyword in combined_lower for keyword in ["today", "tonight", "later today"]) and "date" not in data:
+        data["date"] = now.strftime("%Y-%m-%d")
 
-            if period == "pm" and hour != 12:
-                hour += 12
-            elif period == "am" and hour == 12:
-                hour = 0
+    settings = {
+        "PREFER_DATES_FROM": "future",
+        "RELATIVE_BASE": now,
+        "RETURN_AS_TIMEZONE_AWARE": False,
+    }
 
-            data["time"] = "07:00"  # Default to 7 PM for now, can be enhanced
+    date_results = []
+    if search_dates is not None:
+        try:
+            date_results = search_dates(combined_text, settings=settings) or []
+        except Exception as e:
+            logger.debug(f"🔍 Date parsing failed: {e}")
+
+    for phrase, parsed in date_results:
+        normalized_phrase = phrase.strip()
+        normalized_lower = normalized_phrase.lower()
+
+        digits_only = re.sub(r"\D", "", normalized_phrase)
+        if len(digits_only) >= 7 and not DATE_HINT_PATTERN.search(normalized_lower):
+            # Likely a phone number or reference that isn't a date/time
+            continue
+
+        if "date" not in data:
+            data["date"] = parsed.strftime("%Y-%m-%d")
+
+        if "time" not in data:
+            has_time_hint = (
+                parsed.time() != datetime.min.time()
+                or TIME_HINT_PATTERN.search(normalized_lower)
+                or any(keyword in normalized_lower for keyword in ["lunch", "dinner", "evening", "morning", "tonight"])
+            )
+            if has_time_hint:
+                data["time"] = parsed.strftime("%H:%M")
+
+        if "date" in data and "time" in data:
             break
 
-    # If we have all required fields, return the data
-    if "customer_name" in data and "party_size" in data and ("date" in data or "time" in data):
-        return data
+    if "time" not in data:
+        for pattern in TIME_PATTERNS:
+            match = pattern.search(combined_lower)
+            if not match:
+                continue
 
-    return data if data else None
+            hour = int(match.group("hour"))
+            minute = int(match.group("minute")) if match.group("minute") else 0
+            period = match.groupdict().get("period")
+
+            if period:
+                period = period.lower()
+                if period.startswith("p") and hour != 12:
+                    hour += 12
+                elif period.startswith("a") and hour == 12:
+                    hour = 0
+            if 0 <= hour <= 23:
+                data["time"] = f"{hour:02d}:{minute:02d}"
+                break
+
+    if "time" not in data:
+        if "noon" in combined_lower:
+            data["time"] = "12:00"
+        elif "midnight" in combined_lower:
+            data["time"] = "00:00"
+        elif any(keyword in combined_lower for keyword in ["lunch", "midday"]):
+            data["time"] = "12:30"
+        elif any(keyword in combined_lower for keyword in ["dinner", "evening", "tonight"]):
+            data["time"] = "19:00"
+
+    if "date" in data and "time" in data:
+        # Normalize to ensure dinner fallback doesn't land outside restaurant hours
+        try:
+            parsed_time = datetime.strptime(data["time"], "%H:%M").time()
+            if parsed_time < datetime.strptime("11:30", "%H:%M").time():
+                note_text = "Requested time earlier than opening hours."
+                existing_note = data.get("notes")
+                if isinstance(existing_note, str) and existing_note:
+                    if note_text not in existing_note:
+                        data["notes"] = f"{existing_note} {note_text}".strip()
+                else:
+                    data["notes"] = note_text
+        except ValueError:
+            pass
+
+    # Extract phone numbers if present
+    phone_match = PHONE_PATTERN.search(combined_text)
+    if phone_match:
+        normalized_phone = _normalize_phone(phone_match.group())
+        if normalized_phone:
+            data["phone"] = normalized_phone
+
+    notes = _extract_notes_from_text(combined_text)
+    if notes:
+        data["notes"] = notes
+
+    if not data:
+        return None
+
+    return data
 
 def is_reservation_complete(data: Optional[dict]) -> bool:
     """Check if we have all required reservation info"""
