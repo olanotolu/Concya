@@ -20,6 +20,9 @@ openai>=1.0.0
 # Data validation
 pydantic>=2.0.0
 
+# Natural language date parsing
+dateparser>=1.2.0
+
 # Monitoring
 prometheus-client
 
