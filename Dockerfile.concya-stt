@@ -1,0 +1,59 @@
+# Concya STT - WhisperLiveKit Server
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-devel
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /workspace
+
+# Upgrade pip and install Python dependencies
+RUN pip install --upgrade pip
+
+# Install WhisperLiveKit and other dependencies
+RUN pip install \
+    torch>=2.0.0 \
+    torchaudio>=2.0.0 \
+    numpy>=1.21.0 \
+    scipy>=1.7.0 \
+    fastapi>=0.104.0 \
+    uvicorn>=0.24.0 \
+    websockets>=12.0 \
+    python-multipart>=0.0.6 \
+    colorama>=0.4.6 \
+    pydub>=0.25.1
+
+# Install WhisperLive from source (with error handling)
+RUN pip install git+https://github.com/collabora/WhisperLive.git || \
+    echo "⚠️  WhisperLive installation failed - will use fallback"
+
+# Copy application code
+COPY stt/ ./stt/
+COPY app.py .
+COPY restaurant/ ./restaurant/
+COPY llm/ ./llm/
+COPY tts/ ./tts/
+COPY requirements.txt .
+COPY runpod_quickstart.sh .
+
+# Create audio cache directory
+RUN mkdir -p audio_cache
+
+# Expose ports
+EXPOSE 8000
+EXPOSE 8765
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8765/health || exit 1
+
+# Default command
+CMD ["python", "stt/server.py"]

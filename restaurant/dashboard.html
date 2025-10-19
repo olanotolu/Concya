@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bella Vista - Restaurant Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .sidebar .nav-link {
+            color: rgba(255,255,255,0.8);
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255,255,255,0.1);
+        }
+        .sidebar .nav-link.active {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+        }
+        .table-responsive {
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+        .status-confirmed {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-cancelled {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .status-pending {
+            color: #ffc107;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="d-flex">
+        <div class="sidebar p-3" style="width: 250px;">
+            <div class="text-center mb-4">
+                <h4><i class="fas fa-utensils me-2"></i>Bella Vista</h4>
+                <small>Restaurant Dashboard</small>
+            </div>
+            <nav class="nav flex-column">
+                <a class="nav-link active" href="#overview" onclick="showSection('overview')">
+                    <i class="fas fa-chart-line me-2"></i>Overview
+                </a>
+                <a class="nav-link" href="#bookings" onclick="showSection('bookings')">
+                    <i class="fas fa-calendar-check me-2"></i>Bookings
+                </a>
+                <a class="nav-link" href="#analytics" onclick="showSection('analytics')">
+                    <i class="fas fa-chart-bar me-2"></i>Analytics
+                </a>
+                <a class="nav-link" href="#settings" onclick="showSection('settings')">
+                    <i class="fas fa-cog me-2"></i>Settings
+                </a>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-grow-1 p-4">
+            <!-- Overview Section -->
+            <div id="overview-section" class="section">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="fas fa-chart-line me-2"></i>Dashboard Overview</h2>
+                    <small class="text-muted">Last updated: <span id="last-updated"></span></small>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body text-center">
+                                <i class="fas fa-calendar-check fa-2x mb-2"></i>
+                                <h3 id="total-bookings">0</h3>
+                                <p class="mb-0">Total Bookings</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body text-center">
+                                <i class="fas fa-users fa-2x mb-2"></i>
+                                <h3 id="total-guests">0</h3>
+                                <p class="mb-0">Total Guests</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body text-center">
+                                <i class="fas fa-clock fa-2x mb-2"></i>
+                                <h3 id="today-bookings">0</h3>
+                                <p class="mb-0">Today's Bookings</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body text-center">
+                                <i class="fas fa-star fa-2x mb-2"></i>
+                                <h3 id="avg-party-size">0</h3>
+                                <p class="mb-0">Avg Party Size</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Bookings -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-clock me-2"></i>Recent Bookings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Guest</th>
+                                        <th>Party Size</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-bookings">
+                                    <!-- Bookings will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bookings Section -->
+            <div id="bookings-section" class="section" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="fas fa-calendar-check me-2"></i>Bookings Management</h2>
+                    <button class="btn btn-primary" onclick="refreshBookings()">
+                        <i class="fas fa-sync me-2"></i>Refresh
+                    </button>
+                </div>
+
+                <!-- Filters -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <label class="form-label">Date</label>
+                                <input type="date" class="form-control" id="filter-date" onchange="filterBookings()">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Status</label>
+                                <select class="form-select" id="filter-status" onchange="filterBookings()">
+                                    <option value="">All Status</option>
+                                    <option value="confirmed">Confirmed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                    <option value="pending">Pending</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Search Guest</label>
+                                <input type="text" class="form-control" id="search-guest" onkeyup="filterBookings()" placeholder="Guest name...">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">&nbsp;</label>
+                                <button class="btn btn-outline-secondary d-block" onclick="clearFilters()">
+                                    <i class="fas fa-times me-2"></i>Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bookings Table -->
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Time</th>
+                                        <th>Guest</th>
+                                        <th>Phone</th>
+                                        <th>Party Size</th>
+                                        <th>Status</th>
+                                        <th>Special Requests</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="all-bookings">
+                                    <!-- All bookings will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Section -->
+            <div id="analytics-section" class="section" style="display: none;">
+                <h2><i class="fas fa-chart-bar me-2"></i>Analytics</h2>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Bookings by Day of Week</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="dowChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Popular Time Slots</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="timeChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Section -->
+            <div id="settings-section" class="section" style="display: none;">
+                <h2><i class="fas fa-cog me-2"></i>Settings</h2>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Restaurant Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <form>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Restaurant Name</label>
+                                        <input type="text" class="form-control" value="Bella Vista">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Phone Number</label>
+                                        <input type="tel" class="form-control" value="(929) 592-5370">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Email</label>
+                                        <input type="email" class="form-control" value="reservations@bellavista.com">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Address</label>
+                                        <textarea class="form-control" rows="2">123 Italian Way, New York, NY 10001</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div class="modal fade" id="bookingModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Booking</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="bookingForm">
+                        <input type="hidden" id="bookingId">
+                        <div class="mb-3">
+                            <label class="form-label">Guest Name</label>
+                            <input type="text" class="form-control" id="guestName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Phone</label>
+                            <input type="tel" class="form-control" id="phone" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Date</label>
+                            <input type="date" class="form-control" id="bookingDate" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Time</label>
+                            <input type="time" class="form-control" id="bookingTime" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Party Size</label>
+                            <input type="number" class="form-control" id="partySize" min="1" max="20" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Special Requests</label>
+                            <textarea class="form-control" id="specialRequests" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" id="status">
+                                <option value="confirmed">Confirmed</option>
+                                <option value="cancelled">Cancelled</option>
+                                <option value="pending">Pending</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="updateBooking()">Update Booking</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let allBookings = [];
+        let filteredBookings = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboard();
+            setInterval(loadDashboard, 30000); // Refresh every 30 seconds
+        });
+
+        // Navigation
+        function showSection(sectionName) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(section => {
+                section.style.display = 'none';
+            });
+
+            // Show selected section
+            document.getElementById(sectionName + '-section').style.display = 'block';
+
+            // Update active nav link
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Load section-specific data
+            if (sectionName === 'analytics') {
+                loadAnalytics();
+            }
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                const response = await fetch('/api/dashboard');
+                const data = await response.json();
+
+                // Update stats
+                document.getElementById('total-bookings').textContent = data.stats.total_bookings;
+                document.getElementById('total-guests').textContent = data.stats.total_guests;
+                document.getElementById('today-bookings').textContent = data.stats.today_bookings;
+                document.getElementById('avg-party-size').textContent = data.stats.avg_party_size.toFixed(1);
+                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+
+                // Update recent bookings
+                updateRecentBookings(data.recent_bookings);
+
+                // Store all bookings for filtering
+                allBookings = data.all_bookings;
+                filteredBookings = [...allBookings];
+                updateBookingsTable(filteredBookings);
+
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        }
+
+        // Update recent bookings table
+        function updateRecentBookings(bookings) {
+            const tbody = document.getElementById('recent-bookings');
+            tbody.innerHTML = '';
+
+            bookings.slice(0, 10).forEach(booking => {
+                const row = document.createElement('tr');
+                const statusClass = booking.status === 'confirmed' ? 'status-confirmed' :
+                                  booking.status === 'cancelled' ? 'status-cancelled' : 'status-pending';
+
+                row.innerHTML = `
+                    <td>${booking.time}</td>
+                    <td>${booking.guest_name}</td>
+                    <td>${booking.party_size}</td>
+                    <td><span class="${statusClass}">${booking.status}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="editBooking('${booking.id}')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="cancelBooking('${booking.id}')">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Update all bookings table
+        function updateBookingsTable(bookings) {
+            const tbody = document.getElementById('all-bookings');
+            tbody.innerHTML = '';
+
+            bookings.forEach(booking => {
+                const row = document.createElement('tr');
+                const statusClass = booking.status === 'confirmed' ? 'status-confirmed' :
+                                  booking.status === 'cancelled' ? 'status-cancelled' : 'status-pending';
+
+                row.innerHTML = `
+                    <td>${booking.date}</td>
+                    <td>${booking.time}</td>
+                    <td>${booking.guest_name}</td>
+                    <td>${booking.phone}</td>
+                    <td>${booking.party_size}</td>
+                    <td><span class="${statusClass}">${booking.status}</span></td>
+                    <td>${booking.special_requests || '-'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="editBooking('${booking.id}')" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning me-1" onclick="sendReminder('${booking.id}')" title="Send Reminder">
+                            <i class="fas fa-bell"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger me-1" onclick="cancelBooking('${booking.id}')" title="Cancel">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-info" onclick="callGuest('${booking.phone}')" title="Call Guest">
+                            <i class="fas fa-phone"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Filter bookings
+        function filterBookings() {
+            const dateFilter = document.getElementById('filter-date').value;
+            const statusFilter = document.getElementById('filter-status').value;
+            const searchFilter = document.getElementById('search-guest').value.toLowerCase();
+
+            filteredBookings = allBookings.filter(booking => {
+                if (dateFilter && booking.date !== dateFilter) return false;
+                if (statusFilter && booking.status !== statusFilter) return false;
+                if (searchFilter && !booking.guest_name.toLowerCase().includes(searchFilter)) return false;
+                return true;
+            });
+
+            updateBookingsTable(filteredBookings);
+        }
+
+        // Clear filters
+        function clearFilters() {
+            document.getElementById('filter-date').value = '';
+            document.getElementById('filter-status').value = '';
+            document.getElementById('search-guest').value = '';
+            filteredBookings = [...allBookings];
+            updateBookingsTable(filteredBookings);
+        }
+
+        // Refresh bookings
+        function refreshBookings() {
+            loadDashboard();
+        }
+
+        // Edit booking
+        function editBooking(bookingId) {
+            const booking = allBookings.find(b => b.id === bookingId);
+            if (booking) {
+                document.getElementById('bookingId').value = booking.id;
+                document.getElementById('guestName').value = booking.guest_name;
+                document.getElementById('phone').value = booking.phone;
+                document.getElementById('bookingDate').value = booking.date;
+                document.getElementById('bookingTime').value = booking.time;
+                document.getElementById('partySize').value = booking.party_size;
+                document.getElementById('specialRequests').value = booking.special_requests || '';
+                document.getElementById('status').value = booking.status;
+
+                new bootstrap.Modal(document.getElementById('bookingModal')).show();
+            }
+        }
+
+        // Update booking
+        async function updateBooking() {
+            const formData = {
+                id: document.getElementById('bookingId').value,
+                guest_name: document.getElementById('guestName').value,
+                phone: document.getElementById('phone').value,
+                date: document.getElementById('bookingDate').value,
+                time: document.getElementById('bookingTime').value,
+                party_size: parseInt(document.getElementById('partySize').value),
+                special_requests: document.getElementById('specialRequests').value,
+                status: document.getElementById('status').value
+            };
+
+            try {
+                const response = await fetch('/api/bookings', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                if (response.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('bookingModal')).hide();
+                    loadDashboard();
+                    alert('Booking updated successfully!');
+                } else {
+                    alert('Error updating booking');
+                }
+            } catch (error) {
+                console.error('Error updating booking:', error);
+                alert('Error updating booking');
+            }
+        }
+
+        // Cancel booking
+        async function cancelBooking(bookingId) {
+            if (confirm('Are you sure you want to cancel this booking?')) {
+                try {
+                    const response = await fetch(`/api/bookings/${bookingId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        loadDashboard();
+                        alert('Booking cancelled successfully!');
+                    } else {
+                        alert('Error cancelling booking');
+                    }
+                } catch (error) {
+                    console.error('Error cancelling booking:', error);
+                    alert('Error cancelling booking');
+                }
+            }
+        }
+
+        // Call guest
+        function callGuest(phoneNumber) {
+            // This would integrate with Twilio to make a call
+            alert(`Calling ${phoneNumber}... (Integration needed)`);
+        }
+
+        // Send reminder
+        async function sendReminder(bookingId) {
+            const hours = prompt('Send reminder for how many hours before reservation? (default: 24)', '24');
+            if (hours === null) return; // User cancelled
+
+            const hoursBefore = parseInt(hours) || 24;
+
+            try {
+                const response = await fetch('/api/send_reminder', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        booking_id: bookingId,
+                        hours_before: hoursBefore
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`Reminder sent successfully!\nEmail: ${result.email_sent ? '✓' : '✗'}\nSMS: ${result.sms_sent ? '✓' : '✗'}`);
+                } else {
+                    alert(`Failed to send reminder: ${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error sending reminder:', error);
+                alert('Error sending reminder');
+            }
+        }
+
+        // Load analytics
+        async function loadAnalytics() {
+            try {
+                const response = await fetch('/api/analytics');
+                const data = await response.json();
+
+                // Day of week chart
+                const dowCtx = document.getElementById('dowChart').getContext('2d');
+                new Chart(dowCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                        datasets: [{
+                            label: 'Bookings',
+                            data: data.bookings_by_dow,
+                            backgroundColor: 'rgba(102, 126, 234, 0.6)',
+                            borderColor: 'rgba(102, 126, 234, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+                // Time slots chart
+                const timeCtx = document.getElementById('timeChart').getContext('2d');
+                new Chart(timeCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM', '10:00 PM'],
+                        datasets: [{
+                            label: 'Bookings',
+                            data: data.bookings_by_time,
+                            backgroundColor: 'rgba(118, 75, 162, 0.2)',
+                            borderColor: 'rgba(118, 75, 162, 1)',
+                            borderWidth: 2,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error loading analytics:', error);
+            }
+        }
+    </script>
+</body>
+</html>
