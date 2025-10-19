@@ -17,14 +17,35 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import WhisperLiveKit
+WHISPER_AVAILABLE = False
+whisper_model = None
+
 try:
-    from whisper_live.client import WhisperLiveClient
-    from whisper_live.server import TranscriptionServer
-    WHISPER_AVAILABLE = True
-    print("✅ WhisperLiveKit available")
-except ImportError:
-    WHISPER_AVAILABLE = False
-    print("⚠️  WhisperLiveKit not available - using fallback")
+    # Try different import paths for WhisperLive
+    try:
+        from whisper_live.client import WhisperLiveClient
+        from whisper_live.server import TranscriptionServer
+        WHISPER_AVAILABLE = True
+        print("✅ WhisperLiveKit available (whisper_live)")
+    except ImportError:
+        try:
+            import whisperlivekit as wlk
+            WhisperLiveClient = wlk.WhisperLiveClient
+            TranscriptionServer = wlk.TranscriptionServer
+            WHISPER_AVAILABLE = True
+            print("✅ WhisperLiveKit available (whisperlivekit)")
+        except ImportError:
+            try:
+                from faster_whisper import WhisperModel
+                print("✅ Faster-Whisper available - using direct implementation")
+                WHISPER_AVAILABLE = True
+                whisper_model = WhisperModel("base", device="cuda", compute_type="float16")
+                print("✅ Faster-Whisper model loaded on GPU")
+            except ImportError:
+                print("⚠️  No Whisper implementation available - using fallback")
+
+except Exception as e:
+    print(f"⚠️  Whisper initialization failed: {e} - using fallback")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -151,44 +172,91 @@ class TwilioMediaStream:
             if len(self.audio_buffer) < 16000:  # 1 second at 16kHz
                 return
 
-            if WHISPER_AVAILABLE and whisper_client:
+            if WHISPER_AVAILABLE:
                 try:
-                    # Convert buffer to numpy array for Whisper
-                    import numpy as np
-                    audio_array = np.frombuffer(bytes(self.audio_buffer), dtype=np.int16)
-                    audio_float = audio_array.astype(np.float32) / 32768.0
+                    if whisper_model is not None:
+                        # Use direct faster-whisper implementation
+                        import numpy as np
+                        import librosa
 
-                    # Resample to 16kHz if needed (Whisper expects 16kHz)
-                    import librosa
-                    if len(audio_float) > 0:
-                        audio_float = librosa.resample(audio_float, orig_sr=8000, target_sr=16000)
+                        # Convert buffer to numpy array
+                        audio_array = np.frombuffer(bytes(self.audio_buffer), dtype=np.int16)
+                        audio_float = audio_array.astype(np.float32) / 32768.0
 
-                    # Get transcription from WhisperLiveKit
-                    result = await whisper_client.transcribe(audio_float)
-                    transcription = result.get('text', '').strip()
+                        # Resample to 16kHz (Whisper expects 16kHz)
+                        if len(audio_float) > 0:
+                            audio_float = librosa.resample(audio_float, orig_sr=8000, target_sr=16000)
 
-                    if transcription and transcription != self.last_transcription:
-                        self.last_transcription = transcription
+                        # Transcribe using faster-whisper
+                        segments, info = whisper_model.transcribe(
+                            audio_float,
+                            language="en",
+                            beam_size=5,
+                            vad_filter=True
+                        )
 
-                        # Send real transcription back to Twilio
-                        response = {
-                            "event": "transcription",
-                            "streamSid": self.stream_sid,
-                            "transcription": {
-                                "text": transcription,
-                                "confidence": result.get('confidence', 0.95),
-                                "is_final": True
+                        # Combine all segments
+                        transcription = " ".join([segment.text for segment in segments]).strip()
+
+                        if transcription and transcription != self.last_transcription:
+                            self.last_transcription = transcription
+
+                            # Send real transcription back to Twilio
+                            response = {
+                                "event": "transcription",
+                                "streamSid": self.stream_sid,
+                                "transcription": {
+                                    "text": transcription,
+                                    "confidence": info.language_probability if hasattr(info, 'language_probability') else 0.95,
+                                    "is_final": True
+                                }
                             }
-                        }
 
-                        await self.websocket.send_json(response)
-                        logger.info(f"🎤 Real Whisper transcription: {transcription}")
+                            await self.websocket.send_json(response)
+                            logger.info(f"🎤 Direct Faster-Whisper transcription: {transcription}")
 
-                        # Clear buffer after successful transcription
-                        self.audio_buffer.clear()
+                            # Clear buffer after successful transcription
+                            self.audio_buffer.clear()
+
+                    elif whisper_client:
+                        # Use WhisperLiveKit client
+                        import numpy as np
+                        import librosa
+
+                        # Convert buffer to numpy array for Whisper
+                        audio_array = np.frombuffer(bytes(self.audio_buffer), dtype=np.int16)
+                        audio_float = audio_array.astype(np.float32) / 32768.0
+
+                        # Resample to 16kHz if needed (Whisper expects 16kHz)
+                        if len(audio_float) > 0:
+                            audio_float = librosa.resample(audio_float, orig_sr=8000, target_sr=16000)
+
+                        # Get transcription from WhisperLiveKit
+                        result = await whisper_client.transcribe(audio_float)
+                        transcription = result.get('text', '').strip()
+
+                        if transcription and transcription != self.last_transcription:
+                            self.last_transcription = transcription
+
+                            # Send real transcription back to Twilio
+                            response = {
+                                "event": "transcription",
+                                "streamSid": self.stream_sid,
+                                "transcription": {
+                                    "text": transcription,
+                                    "confidence": result.get('confidence', 0.95),
+                                    "is_final": True
+                                }
+                            }
+
+                            await self.websocket.send_json(response)
+                            logger.info(f"🎤 WhisperLiveKit transcription: {transcription}")
+
+                            # Clear buffer after successful transcription
+                            self.audio_buffer.clear()
 
                 except Exception as e:
-                    logger.error(f"❌ WhisperLiveKit transcription error: {e}")
+                    logger.error(f"❌ Whisper transcription error: {e}")
                     # Fall back to placeholder transcription
                     self._send_placeholder_transcription()
             else:
@@ -268,28 +336,40 @@ async def get_streams():
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize WhisperLiveKit on startup"""
-    global whisper_client, WHISPER_AVAILABLE
+    """Initialize Whisper on startup"""
+    global whisper_client
 
     if WHISPER_AVAILABLE:
         try:
-            logger.info("🚀 Initializing WhisperLiveKit...")
-            # Initialize WhisperLive client for transcription
-            whisper_client = WhisperLiveClient(
-                host="localhost",
-                port=9090,
-                backend="faster_whisper",
-                model_size="base",
-                lang="en"
-            )
-
-            logger.info("✅ WhisperLiveKit client initialized")
+            if whisper_model is not None:
+                # Using direct faster-whisper
+                logger.info("🚀 Using direct Faster-Whisper implementation")
+                logger.info("✅ Faster-Whisper ready for GPU transcription")
+            else:
+                # Try to initialize WhisperLive client
+                logger.info("🚀 Initializing WhisperLiveKit...")
+                try:
+                    from whisper_live.client import WhisperLiveClient
+                    whisper_client = WhisperLiveClient(
+                        host="localhost",
+                        port=9090,
+                        backend="faster_whisper",
+                        model_size="base",
+                        lang="en"
+                    )
+                    logger.info("✅ WhisperLiveKit client initialized")
+                except Exception as e:
+                    logger.error(f"❌ WhisperLiveKit client failed: {e}")
+                    logger.warning("⚠️  Falling back to placeholder transcription")
+                    global WHISPER_AVAILABLE
+                    WHISPER_AVAILABLE = False
         except Exception as e:
-            logger.error(f"❌ Failed to initialize WhisperLiveKit: {e}")
+            logger.error(f"❌ Failed to initialize Whisper: {e}")
             logger.warning("⚠️  Falling back to placeholder transcription")
+            global WHISPER_AVAILABLE
             WHISPER_AVAILABLE = False
     else:
-        logger.warning("⚠️  WhisperLiveKit not available - using placeholder transcription")
+        logger.warning("⚠️  Whisper not available - using placeholder transcription")
 
 @app.on_event("shutdown")
 async def shutdown_event():
