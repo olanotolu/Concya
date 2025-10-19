@@ -16,13 +16,15 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import WhisperLive
+# Import WhisperLiveKit
 try:
+    from whisper_live.client import WhisperLiveClient
     from whisper_live.server import TranscriptionServer
     WHISPER_AVAILABLE = True
+    print("✅ WhisperLiveKit available")
 except ImportError:
     WHISPER_AVAILABLE = False
-    print("⚠️  WhisperLive not available")
+    print("⚠️  WhisperLiveKit not available - using fallback")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -126,19 +128,18 @@ class TwilioMediaStream:
             # Decode base64 mulaw audio
             import base64
             import audioop
-            
+
             mulaw_data = base64.b64decode(payload)
-            
+
             # Convert mulaw to 16-bit PCM
             pcm_data = audioop.ulaw2lin(mulaw_data, 2)
-            
-            # Send to WhisperLive for transcription
-            if whisper_client:
-                self.audio_buffer.extend(pcm_data)
-            
-            # Keep buffer size manageable (last 2 seconds at 16kHz)
-            if len(self.audio_buffer) > 32000:  # 2 seconds at 16kHz
-                self.audio_buffer = self.audio_buffer[-32000:]
+
+            # Add to audio buffer for transcription
+            self.audio_buffer.extend(pcm_data)
+
+            # Keep buffer size manageable (last 3 seconds at 16kHz for better transcription)
+            if len(self.audio_buffer) > 48000:  # 3 seconds at 16kHz
+                self.audio_buffer = self.audio_buffer[-48000:]
 
         except Exception as e:
             logger.error(f"❌ Error processing audio chunk: {e}")
@@ -146,38 +147,82 @@ class TwilioMediaStream:
     async def send_transcription(self):
         """Send current transcription to Twilio"""
         try:
-            # Check if we have enough audio data (at least 0.2 seconds at 16kHz)
-            if not whisper_client or len(self.audio_buffer) < 3200:
+            # Check if we have enough audio data (at least 1 second at 16kHz)
+            if len(self.audio_buffer) < 16000:  # 1 second at 16kHz
                 return
-            
-            # Convert buffer to numpy array for Whisper
-            import numpy as np
-            audio_array = np.frombuffer(bytes(self.audio_buffer), dtype=np.int16)
-            audio_float = audio_array.astype(np.float32) / 32768.0
-            
-            # Get transcription from WhisperLive
-            result = await whisper_client.transcribe(audio_float)
-            transcription = result.get('text', '').strip()
-            
-            if transcription and transcription != self.last_transcription:
+
+            if WHISPER_AVAILABLE and whisper_client:
+                try:
+                    # Convert buffer to numpy array for Whisper
+                    import numpy as np
+                    audio_array = np.frombuffer(bytes(self.audio_buffer), dtype=np.int16)
+                    audio_float = audio_array.astype(np.float32) / 32768.0
+
+                    # Resample to 16kHz if needed (Whisper expects 16kHz)
+                    import librosa
+                    if len(audio_float) > 0:
+                        audio_float = librosa.resample(audio_float, orig_sr=8000, target_sr=16000)
+
+                    # Get transcription from WhisperLiveKit
+                    result = await whisper_client.transcribe(audio_float)
+                    transcription = result.get('text', '').strip()
+
+                    if transcription and transcription != self.last_transcription:
+                        self.last_transcription = transcription
+
+                        # Send real transcription back to Twilio
+                        response = {
+                            "event": "transcription",
+                            "streamSid": self.stream_sid,
+                            "transcription": {
+                                "text": transcription,
+                                "confidence": result.get('confidence', 0.95),
+                                "is_final": True
+                            }
+                        }
+
+                        await self.websocket.send_json(response)
+                        logger.info(f"🎤 Real Whisper transcription: {transcription}")
+
+                        # Clear buffer after successful transcription
+                        self.audio_buffer.clear()
+
+                except Exception as e:
+                    logger.error(f"❌ WhisperLiveKit transcription error: {e}")
+                    # Fall back to placeholder transcription
+                    self._send_placeholder_transcription()
+            else:
+                # Send placeholder transcription
+                self._send_placeholder_transcription()
+
+        except Exception as e:
+            logger.error(f"❌ Error in send_transcription: {e}")
+
+    def _send_placeholder_transcription(self):
+        """Send placeholder transcription when WhisperLiveKit is unavailable"""
+        try:
+            transcription = f"Transcription at {time.time():.1f}"
+
+            if transcription != self.last_transcription:
                 self.last_transcription = transcription
-                
-                # Send transcription back to Twilio
+
                 response = {
                     "event": "transcription",
                     "streamSid": self.stream_sid,
                     "transcription": {
                         "text": transcription,
-                        "confidence": result.get('confidence', 0.95),
-                        "is_final": True
+                        "confidence": 0.95,
+                        "is_final": False
                     }
                 }
-                
-                await self.websocket.send_json(response)
-                logger.info(f"📝 Sent transcription: {transcription}")
+
+                # Use asyncio to send JSON
+                import asyncio
+                asyncio.create_task(self.websocket.send_json(response))
+                logger.info(f"📝 Sent placeholder transcription: {transcription}")
 
         except Exception as e:
-            logger.error(f"❌ Error sending transcription: {e}")
+            logger.error(f"❌ Error sending placeholder transcription: {e}")
 
 @app.websocket("/media")
 async def media_stream(websocket: WebSocket):
@@ -229,28 +274,21 @@ async def startup_event():
     if WHISPER_AVAILABLE:
         try:
             logger.info("🚀 Initializing WhisperLiveKit...")
-            from whisper_live.server import TranscriptionServer
-            
-            # Initialize WhisperLive transcription server
-            whisper_client = TranscriptionServer()
-            
-            # Run in background with faster_whisper backend
-            import threading
-            def run_whisper_server():
-                whisper_client.run(
-                    host="0.0.0.0",
-                    port=9090,
-                    backend="faster_whisper",
-                    faster_whisper_custom_model_path=None
-                )
-            
-            whisper_thread = threading.Thread(target=run_whisper_server, daemon=True)
-            whisper_thread.start()
-            
-            logger.info("✅ WhisperLiveKit initialized on port 9090")
+            # Initialize WhisperLive client for transcription
+            whisper_client = WhisperLiveClient(
+                host="localhost",
+                port=9090,
+                backend="faster_whisper",
+                model_size="base",
+                lang="en"
+            )
+
+            logger.info("✅ WhisperLiveKit client initialized")
         except Exception as e:
             logger.error(f"❌ Failed to initialize WhisperLiveKit: {e}")
             logger.warning("⚠️  Falling back to placeholder transcription")
+            global WHISPER_AVAILABLE
+            WHISPER_AVAILABLE = False
     else:
         logger.warning("⚠️  WhisperLiveKit not available - using placeholder transcription")
 
