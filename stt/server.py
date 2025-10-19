@@ -269,7 +269,7 @@ async def get_streams():
 @app.on_event("startup")
 async def startup_event():
     """Initialize WhisperLiveKit on startup"""
-    global whisper_client
+    global whisper_client, WHISPER_AVAILABLE
 
     if WHISPER_AVAILABLE:
         try:
@@ -287,7 +287,6 @@ async def startup_event():
         except Exception as e:
             logger.error(f"❌ Failed to initialize WhisperLiveKit: {e}")
             logger.warning("⚠️  Falling back to placeholder transcription")
-            global WHISPER_AVAILABLE
             WHISPER_AVAILABLE = False
     else:
         logger.warning("⚠️  WhisperLiveKit not available - using placeholder transcription")
